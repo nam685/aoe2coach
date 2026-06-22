@@ -1,0 +1,28 @@
+id: exposed-gold
+name: "Exposed gold / forward mining camp"
+explanation: >
+  Mining gold in a forward, exposed spot (closer to your opponent than to your base, with no walls
+  or military nearby) invites raids that can shut off your gold income — and no gold means no Knights,
+  Crossbows, or unique units. Safe gold vs front gold is often a different game entirely.
+severity: medium
+confidence_tier: heuristic
+
+detector:
+  fn: exposed_gold
+  inputs: [spatial.me.eco_exposure, spatial.me.forward, spatial.me.walls]
+  params:
+    mining_building_names: ["Mining Camp"]
+    cover_dist: 12.0
+  condition: "a Mining Camp in eco_exposure.front with no forward building / wall within cover_dist"
+
+fix: >
+  Mine your closest, safest gold first and wall or garrison forward gold before committing villagers
+  to it. If you must take exposed gold, drop a tower/wall or keep army nearby, and have a back-up
+  gold pile scouted so a raid doesn't cut you off completely.
+
+source:
+  ref: "hera-top-mistakes"
+  detail: "Hera — safe vs front gold changes the game; protect exposed mining"
+  study:
+    url: "https://www.youtube.com/@Hera"
+    title: "Hera — protecting your gold / safe vs exposed mining"

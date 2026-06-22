@@ -1,0 +1,27 @@
+id: slow-imperial
+name: "Slow Imperial uptime"
+explanation: >
+  Reaching Imperial very late lets the opponent get Trebs, Bombard Cannons, and fully-upgraded units
+  first. A typical boom-into-Imperial lands around 28:00-34:00; a 40-minute Imperial usually means
+  the eco plateaued or production stalled in the mid-game.
+severity: medium
+confidence_tier: exact
+
+detector:
+  fn: slow_imperial
+  inputs: [ages.imperial_arrival_s]
+  params:
+    generic_max_s: 2160
+  condition: "imperial_arrival_s > (build_target.imperial.max_s or generic_max_s)"
+
+fix: >
+  Keep adding TCs and villagers through Castle Age so you have the food/gold to power into Imperial,
+  and get your eco upgrades (Wheelbarrow/Hand Cart, Bow Saw, mining ups) on time so each villager
+  collects more.
+
+source:
+  ref: "aoe-library-perfect-uptimes"
+  detail: "Typical Imperial ~28:00-34:00; generic late-flag band edge ~36:00"
+  study:
+    url: "https://aoe-library.com/perfect-uptimes/"
+    title: "AoE Library — Perfect Uptimes (Imperial targets per pop)"

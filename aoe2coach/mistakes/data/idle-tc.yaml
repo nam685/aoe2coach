@@ -1,0 +1,26 @@
+id: idle-tc
+name: "Idle Town Center"
+explanation: >
+  Every second the Town Center isn't producing villagers is economy you never get back. Idling one
+  villager's worth of time (~25s) early snowballs to roughly 1000 resources lost over a long game.
+severity: high
+confidence_tier: exact
+
+detector:
+  fn: idle_tc
+  inputs: [efficiency.tc_idle_s, meta.duration_s]
+  params:
+    base_tolerance_s: 25
+    per_minute_tolerance_s: 2.0
+  condition: "tc_idle_s > base_tolerance_s + per_minute_tolerance_s * (duration_s / 60)"
+
+fix: >
+  Bind all Town Centers to a hotkey and check them on a rhythm; queue 1-2 villagers when you can't
+  babysit. Set a gather point on wood/food so new villagers auto-task the moment they spawn.
+
+source:
+  ref: "steam-noobs-guide-2993319677"
+  detail: "~982 wood lost from 25s idle by 8:40 in a 50-min game"
+  study:
+    url: "https://steamcommunity.com/sharedfiles/filedetails/?id=2993319677"
+    title: "Steam Noobs guide — never let your TC sit idle"

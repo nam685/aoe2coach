@@ -1,0 +1,26 @@
+id: slow-castle
+name: "Slow Castle uptime"
+explanation: >
+  A late Castle Age means your Knights, Crossbows, eco upgrades and unique units all arrive late,
+  ceding the timing window to your opponent. Standard 1v1 Castle times land roughly 16:00-18:00;
+  drifting past 20:00 usually means a stalled Feudal eco or idle TC.
+severity: high
+confidence_tier: exact
+
+detector:
+  fn: slow_castle
+  inputs: [ages.castle_arrival_s]
+  params:
+    generic_max_s: 1140
+  condition: "castle_arrival_s > (build_target.castle.max_s or generic_max_s)"
+
+fix: >
+  Push villager count and the right Feudal eco upgrades, then click up the moment you have the food
+  and gold — don't bank resources waiting. Keep both TCs (if boomed) producing through the age-up.
+
+source:
+  ref: "aoe-library-perfect-uptimes"
+  detail: "Standard 1v1 Castle ~16:00-18:00; generic late-flag band edge ~19:00"
+  study:
+    url: "https://aoe-library.com/perfect-uptimes/"
+    title: "AoE Library — Perfect Uptimes (Castle targets per pop)"

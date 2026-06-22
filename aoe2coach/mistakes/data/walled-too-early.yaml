@@ -1,0 +1,26 @@
+id: walled-too-early
+name: "Walled too early"
+explanation: >
+  Spending dark-age time and villager-seconds on heavy walling before you've even reached Feudal
+  usually slows your eco and uptime for protection you don't need yet. On open maps the priority is
+  economy first, walls once you're set. (Closed maps are an exception — this is a soft signal.)
+severity: low
+confidence_tier: heuristic
+
+detector:
+  fn: walled_too_early
+  inputs: [spatial.me.walls, ages.feudal_arrival_s]
+  params:
+    min_early_segments: 4
+  condition: ">= min_early_segments wall segments placed before feudal_arrival_s"
+
+fix: >
+  In the dark age, prioritize villagers and your uptime. Wall reactively once you're in Feudal and
+  see a threat, or wall only the one obvious lane rather than your whole base early.
+
+source:
+  ref: "steam-noobs-guide-2993319677"
+  detail: "Eco first, then wall — early heavy walling costs uptime"
+  study:
+    url: "https://steamcommunity.com/sharedfiles/filedetails/?id=2993319677"
+    title: "Steam Noobs guide — wall after your economy"

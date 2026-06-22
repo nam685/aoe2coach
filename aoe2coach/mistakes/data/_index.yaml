@@ -1,0 +1,41 @@
+# Ordered index + citation registry for the coaching knowledge base.
+# `order` drives default display ordering in #5's UI; `refs` resolves source.ref keys -> URL/title.
+# Thresholds in each entry's detector.params are CALIBRATION-PENDING (seeded from the cited sources,
+# to be tuned against Nam's real-rec validation set).
+
+order:
+  - idle-tc
+  - long-vil-gap
+  - slow-feudal
+  - slow-castle
+  - slow-imperial
+  - late-loom-or-eco-up
+  - too-few-villagers
+  - villager-stall-late
+  - exposed-gold
+  - got-housed
+  - no-map-presence
+  - leaky-or-late-walls
+  - walled-too-early
+  - floating-resources
+  - over-collecting-one-res
+
+refs:
+  steam-noobs-guide-2993319677:
+    url: "https://steamcommunity.com/sharedfiles/filedetails/?id=2993319677"
+    title: "Steam — Noobs guide for AoE2 (common mistakes)"
+  aoe-library-perfect-uptimes:
+    url: "https://aoe-library.com/perfect-uptimes/"
+    title: "AoE Library — Perfect Uptimes (age-arrival target bands per pop)"
+  hera-strategy-guide-2025-04:
+    url: "https://www.youtube.com/@Hera"
+    title: "Hera — Strategy Guide 2025 (uptime targets, eco-upgrade timing)"
+  hera-top-mistakes:
+    url: "https://www.youtube.com/@Hera"
+    title: "Hera — common ladder mistakes (coaching videos)"
+  sotl-eco-upgrades:
+    url: "https://www.youtube.com/@SpiritOfTheLaw"
+    title: "Spirit of the Law — eco-upgrade ROI (Wheelbarrow / farms)"
+  aoe2-villager-wiki:
+    url: "https://ageofempires.fandom.com/wiki/Villager_(Age_of_Empires_II)"
+    title: "AoE2 wiki — Villager"

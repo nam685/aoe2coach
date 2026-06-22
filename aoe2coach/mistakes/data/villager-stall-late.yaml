@@ -1,0 +1,29 @@
+id: villager-stall-late
+name: "Villager production stalled after Imperial"
+explanation: >
+  A common plateau: you reach Imperial, shift fully to army, and quietly stop making villagers while
+  stuck at a low count (e.g. ~80 vils). Your opponent keeps booming and out-produces you for the rest
+  of the game. The replay shows production *ceased* (no villager queued after Imperial) while the
+  total count is still low — both together, so it never fires on a player who already maxed.
+severity: high
+confidence_tier: exact
+
+detector:
+  fn: villager_stall_late
+  inputs: [ages.imperial_arrival_s, production.produced_units, counts.villagers_produced]
+  params:
+    villager_unit_id: 83
+    post_imp_grace_s: 0
+    post_imp_vil_floor: 100
+  condition: "no villager DE_QUEUE t_s after imperial_arrival_s AND villagers_produced < post_imp_vil_floor"
+
+fix: >
+  Keep queuing villagers after Imperial until you're near maxed (~110-120 on a long game), then cut
+  to all-military. A simple rule: don't stop making villagers until your population is nearly full.
+
+source:
+  ref: "hera-top-mistakes"
+  detail: "Hera/SotL — never stop making villagers until ~maxed; stalling early caps your eco"
+  study:
+    url: "https://www.youtube.com/@Hera"
+    title: "Hera — keep making villagers (don't stall post-Imp)"

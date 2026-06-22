@@ -1,0 +1,29 @@
+id: floating-resources
+name: "Floating resources"
+explanation: >
+  Resources sitting in the bank do nothing — banked wood/food/gold that should be villagers,
+  military, or upgrades is wasted potential, especially in Feudal where a few hundred floating wood
+  often means a missed military building or eco upgrade.
+severity: medium
+# needs-#2: requires the economy stockpile estimate (#2), which is not available on save 68.0
+# (no WORK ops to model resource flow). Reference-only until #2 is trusted — detector disabled so
+# it can NEVER false-fire on absent data.
+confidence_tier: needs-#2
+
+detector:
+  fn: disabled
+  inputs: [economy.stockpile_estimate]
+  params: {}
+  condition: "DISABLED — needs #2 stockpile estimate (no WORK ops on save 68.0); never fires."
+
+fix: >
+  Spend as you collect: keep production buildings queuing, buy/sell at the market to rebalance, and
+  add TCs or military rather than banking. A good habit is to glance at your resource bar and turn
+  any large pile into something on the map.
+
+source:
+  ref: "steam-noobs-guide-2993319677"
+  detail: "Don't float ~1000 wood; convert banked resources into units/upgrades"
+  study:
+    url: "https://steamcommunity.com/sharedfiles/filedetails/?id=2993319677"
+    title: "Steam Noobs guide — don't float resources"
