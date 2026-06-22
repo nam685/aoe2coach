@@ -1,0 +1,11 @@
+__pycache__/
+*.py[cod]
+.venv/
+.pytest_cache/
+.ruff_cache/
+dist/
+build/
+*.egg-info/
+# Real AoE2 recorded games used as local test fixtures contain third-party
+# player data; never commit them.
+tests/fixtures/*.aoe2record
