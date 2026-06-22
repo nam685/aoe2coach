@@ -144,9 +144,11 @@ def render_layout(lay, out_path, title=""):
 def render_maps(reconstruction, out_dir, prefix="map", img_size=600, margin=30):
     """Render the OVERALL layout + one SNAPSHOT per detected engagement. Returns the PNG paths.
 
-    `reconstruction` is the dict from `reconstruct(rec).to_dict()`. Files:
+    `reconstruction` may be #1's Reconstruction object OR its dict (`reconstruct(rec).to_dict()`). Files:
       <prefix>_overall.png, then <prefix>_eng01.png, <prefix>_eng02.png, ... (chronological).
     """
+    if not isinstance(reconstruction, dict):
+        reconstruction = reconstruction.to_dict()
     os.makedirs(out_dir, exist_ok=True)
     paths = []
 

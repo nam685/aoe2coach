@@ -461,3 +461,28 @@ def test_second_rec_runs_clean():
     ids = {f.id for f in flagged}
     assert ids.isdisjoint(NEEDS_2)
     json.dumps([f.to_dict() for f in flagged])
+
+
+def test_detect_mistakes_accepts_object_not_only_dict():
+    """Regression: detect_mistakes() must accept #1's Reconstruction object, not just to_dict().
+    Before the fix, passing the object silently fired ZERO detectors (a dangerous false 'clean')."""
+
+    class _FakeRecon:
+        def __init__(self, d):
+            self._d = d
+
+        def to_dict(self):
+            return self._d
+
+    sample = {
+        "ages": {"feudal_arrival_s": 600, "castle_arrival_s": 1253, "imperial_arrival_s": 2423},
+        "efficiency": {"tc_idle_s": 1464},
+        "production": {"milestones": {}},
+        "techs": {},
+        "spatial": {},
+        "counts": {},
+        "population": {},
+    }
+    from_dict = mistakes.detect_mistakes(sample)
+    from_obj = mistakes.detect_mistakes(_FakeRecon(sample))
+    assert [f.id for f in from_obj] == [f.id for f in from_dict]

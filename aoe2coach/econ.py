@@ -221,6 +221,9 @@ def estimate_economy(ops, player, gaia_list, recon):
     Returns a JSON-serializable dict, always labeled `estimate: true`. The `collected` key is a
     per-resource band dict OR None (suppressed). `qualitative` is always present (the honest fallback).
     """
+    # Accept either #1's Reconstruction object or its dict form (parity with classify/detect_mistakes).
+    if not isinstance(recon, dict):
+        recon = recon.to_dict()
     g_inst = gaia_mod.gaia_objects(gaia_list)
     g_objid = gaia_mod.by_object_id(gaia_list)
     events = assignment_events(ops, player, g_inst, g_objid)

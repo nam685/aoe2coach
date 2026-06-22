@@ -270,13 +270,17 @@ def _fmt_mmss(s) -> str:
 
 
 # --------------------------------------------------------------------------- the public entrypoint
-def classify(recon: dict, library: dict[str, BuildOrder] | None = None) -> ClassificationResult:
+def classify(recon, library: dict[str, BuildOrder] | None = None) -> ClassificationResult:
     """Deterministically classify a Reconstruction into 1-3 ranked Candidates (B.3).
 
-    `recon` is the dict form of #1's Reconstruction (`reconstruct(rec).to_dict()`). `library`
-    overrides the loaded YAML library (for tests); defaults to `buildorders.load_library()`.
+    `recon` may be #1's Reconstruction object OR its dict form (`reconstruct(rec).to_dict()`) --
+    parity with detect_mistakes. `library` overrides the loaded YAML library (for tests);
+    defaults to `buildorders.load_library()`.
     """
     lib = library if library is not None else load_library()
+    # Accept either #1's Reconstruction object or its dict form.
+    if not isinstance(recon, dict):
+        recon = recon.to_dict()
     snap = _build_snapshot(recon)
     notes: list[str] = []
 

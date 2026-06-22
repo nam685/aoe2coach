@@ -349,3 +349,27 @@ def test_calibration_game_plausible():
         )
         for i in ids
     )
+
+
+def test_classify_accepts_reconstruction_object_not_only_dict():
+    """Regression: classify() must accept #1's Reconstruction object, not just its dict form
+    (parity with detect_mistakes). Caught at integration when reconstruct() -> object crashed
+    classify()'s recon.get(...)."""
+
+    class _FakeRecon:
+        def __init__(self, d):
+            self._d = d
+
+        def to_dict(self):
+            return self._d
+
+    sample = {
+        "ages": {"feudal_arrival_s": 600, "castle_arrival_s": 1100},
+        "production": {"milestones": {}},
+        "techs": {},
+        "spatial": {},
+        "counts": {},
+    }
+    from_dict = classify(sample)
+    from_obj = classify(_FakeRecon(sample))
+    assert [c.build_id for c in from_obj.candidates] == [c.build_id for c in from_dict.candidates]

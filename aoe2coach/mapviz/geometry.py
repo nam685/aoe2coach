@@ -128,8 +128,10 @@ def layout(reconstruction, img_size=600, margin=30, at_s=None):
     `reconstruction` is the dict from `reconstruct(rec).to_dict()`. `at_s`, when given, frames a
     SNAPSHOT: only buildings placed by then and engagements active by then are included (used to
     render a map at each detected engagement). Degrades gracefully — missing bases simply drop the
-    base markers and arrows; nothing raises.
+    base markers and arrows; nothing raises. Accepts either #1's Reconstruction object or its dict.
     """
+    if not isinstance(reconstruction, dict):
+        reconstruction = reconstruction.to_dict()
     meta = reconstruction.get("meta", {}) or {}
     sp = reconstruction.get("spatial", {}) or {}
     me_sp = sp.get("me", {}) or {}

@@ -73,6 +73,11 @@ def detect_mistakes(recon, library=None, build_target=None):
 
         library = load_library()
 
+    # Accept either #1's Reconstruction object or its dict form. Without this, passing the object
+    # silently fires ZERO detectors (every dotted-path lookup misses) -- a dangerous false "clean".
+    if not isinstance(recon, dict):
+        recon = recon.to_dict()
+
     recon_view = recon
     if build_target is not None:
         recon_view = dict(recon)
