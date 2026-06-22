@@ -5,6 +5,7 @@ description = "Standalone AoE2 DE 1v1 coach core (parser, timeline, metrics, LLM
 requires-python = ">=3.12"
 dependencies = [
     "mgz-fast==1.0.0",
+    "pillow>=10.0",
 ]
 
 [dependency-groups]
