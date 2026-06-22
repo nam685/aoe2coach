@@ -1,0 +1,29 @@
+id: no-map-presence
+name: "No map presence"
+explanation: >
+  Hugging your base with no forward buildings and no fights in the center or your opponent's half
+  cedes the map — relics, extra gold/stone, and expansion room all go to your opponent uncontested.
+  This is inferred from a lack of forward buildings plus few aggressive commands away from home, so
+  it's a soft signal rather than proof of passivity.
+severity: low
+confidence_tier: heuristic
+
+detector:
+  fn: no_map_presence
+  inputs: [spatial.me.forward, combat.me.engagements, meta.duration_s]
+  params:
+    min_game_minutes: 12
+    max_away_engagements: 1
+  condition: "no forward buildings AND <= max_away_engagements fights in center/opp zones"
+
+fix: >
+  Use your scout and a few military units to contest the center, grab relics, and pressure your
+  opponent's gold. Forward buildings (a forward TC, tower, or production building) anchor map
+  control and deny your opponent free expansion.
+
+source:
+  ref: "steam-noobs-guide-2993319677"
+  detail: "Map awareness / presence is a common beginner gap"
+  study:
+    url: "https://steamcommunity.com/sharedfiles/filedetails/?id=2993319677"
+    title: "Steam Noobs guide — map awareness and presence"

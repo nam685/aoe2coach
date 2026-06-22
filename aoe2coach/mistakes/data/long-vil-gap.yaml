@@ -1,0 +1,26 @@
+id: long-vil-gap
+name: "Long villager-production gap"
+explanation: >
+  A single long pause in villager production points to a moment you lost track of your Town Center —
+  often during a fight, a wall, or an age-up. One big gap can cost more than several tiny ones
+  because the lost villager never starts compounding.
+severity: medium
+confidence_tier: exact
+
+detector:
+  fn: long_vil_gap
+  inputs: [efficiency.longest_villager_gap_s]
+  params:
+    max_gap_s: 60
+  condition: "longest_villager_gap_s > max_gap_s"
+
+fix: >
+  When you're about to micro a fight or wall, queue 2-3 villagers first so the TC keeps working
+  while your attention is elsewhere. Use the TC hotkey + "go to" to snap back between actions.
+
+source:
+  ref: "steam-noobs-guide-2993319677"
+  detail: "One long gap = a villager (and its compounding output) lost outright"
+  study:
+    url: "https://steamcommunity.com/sharedfiles/filedetails/?id=2993319677"
+    title: "Steam Noobs guide — keep villagers flowing"

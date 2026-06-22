@@ -1,0 +1,29 @@
+id: over-collecting-one-res
+name: "Over-collecting one resource"
+explanation: >
+  An economy skewed too far onto one resource (all wood, no food; or all food, no gold) starves the
+  units and upgrades you actually want. Balanced eco lets you produce continuously instead of
+  bottlenecking on the resource you neglected.
+severity: low
+# needs-#2: requires the per-resource villager split (#2), which depends on resource-flow modelling
+# unavailable on save 68.0 (WORK ops absent; GATHER_POINT is too sparse alone). Reference-only;
+# detector disabled so it never false-fires.
+confidence_tier: needs-#2
+
+detector:
+  fn: disabled
+  inputs: [economy.vils_per_resource]
+  params: {}
+  condition: "DISABLED — needs #2 vils-per-resource split; never fires."
+
+fix: >
+  Match your villager distribution to what you're producing: enough food for villagers and units,
+  enough gold for your military, enough wood for buildings and farms. Rebalance villagers (or use the
+  market) when one resource stockpiles while another runs dry.
+
+source:
+  ref: "steam-noobs-guide-2993319677"
+  detail: "Balance your eco to your production; don't over-collect one resource"
+  study:
+    url: "https://steamcommunity.com/sharedfiles/filedetails/?id=2993319677"
+    title: "Steam Noobs guide — eco balance"

@@ -1,0 +1,29 @@
+id: leaky-or-late-walls
+name: "Leaky or late walls"
+explanation: >
+  When you're taking pressure at home but have few or no walls, raids get straight into your
+  economy. Walls buy time and let a few units defend a much larger force. We infer coverage from
+  wall-segment count against fights near your base, so it's a heuristic — gaps aren't directly
+  visible in the replay.
+severity: medium
+confidence_tier: heuristic
+
+detector:
+  fn: leaky_or_late_walls
+  inputs: [spatial.me.walls, combat.me.engagements]
+  params:
+    min_own_base_pressure: 2
+    min_wall_segments: 3
+  condition: "own-base fights occurred AND wall_segments < min_wall_segments"
+
+fix: >
+  Once your eco is rolling, wall the obvious raiding lanes into your base before they become a
+  problem — palisade in Feudal, upgrade to stone where it matters. A complete wall with a gate is
+  far better than a half-wall raiders can slip around.
+
+source:
+  ref: "steam-noobs-guide-2993319677"
+  detail: "Wall after your eco is set; gaps let raids through"
+  study:
+    url: "https://steamcommunity.com/sharedfiles/filedetails/?id=2993319677"
+    title: "Steam Noobs guide — walling your base"

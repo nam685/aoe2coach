@@ -1,0 +1,29 @@
+id: too-few-villagers
+name: "Too few villagers"
+explanation: >
+  Villagers are the engine of everything — military, upgrades, more TCs. Under-producing them for
+  the length of the game means your whole economy ran below capacity. Because the replay only shows
+  villagers *queued* (an upper bound, deaths aren't logged), this only flags when even that
+  optimistic count is below a floor — so it never over-fires on a healthy eco.
+severity: high
+confidence_tier: exact
+
+detector:
+  fn: too_few_villagers
+  inputs: [counts.villagers_produced, meta.duration_s]
+  params:
+    vils_per_minute_floor: 2.2
+    base_floor: 20
+    floor_cap: 110
+  condition: "villagers_produced < min(base_floor + vils_per_minute_floor * minutes, floor_cap)"
+
+fix: >
+  Never stop making villagers until you're near maxed — add 2nd/3rd Town Centers in Castle Age to
+  pump villagers faster, and keep all TCs producing through age-ups and fights.
+
+source:
+  ref: "aoe2-villager-wiki"
+  detail: "Villager count is the primary eco lever; only flagged BELOW a length-scaled floor"
+  study:
+    url: "https://ageofempires.fandom.com/wiki/Villager_(Age_of_Empires_II)"
+    title: "AoE2 wiki — Villager (economy fundamentals)"

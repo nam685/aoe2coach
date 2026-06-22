@@ -1,0 +1,29 @@
+id: got-housed
+name: "Got housed (hit housing limit)"
+explanation: >
+  If your built housing capacity plateaus low while you're still trying to produce, you get "housed"
+  — units sit blocked in the queue and your TCs/military buildings stall. Because deaths aren't
+  logged we infer this from your built housing ceiling, so it's a likely-not-certain signal.
+severity: medium
+confidence_tier: heuristic
+
+detector:
+  fn: got_housed
+  inputs: [population.me.housed_pop_ceiling, meta.duration_s, production.produced_units]
+  params:
+    expected_ceiling: 100
+    min_game_minutes: 12
+    late_production_frac: 0.5
+  condition: "housed_pop_ceiling < expected_ceiling AND still producing units past mid-game"
+
+fix: >
+  Build houses ahead of your population, not reactively — keep a comfortable buffer (5-10 free pop)
+  and add several houses at once when you boom. Farms also add no pop, so plan housing around your
+  villager and army growth.
+
+source:
+  ref: "steam-noobs-guide-2993319677"
+  detail: "Build houses proactively; getting housed stalls all production"
+  study:
+    url: "https://steamcommunity.com/sharedfiles/filedetails/?id=2993319677"
+    title: "Steam Noobs guide — don't get housed"

@@ -1,0 +1,28 @@
+id: slow-feudal
+name: "Slow Feudal uptime"
+explanation: >
+  Reaching Feudal late delays everything downstream — your first military, your Castle time, your
+  whole game. Most ladder builds aim for Feudal in the 9:00-11:00 range on open maps; drifting well
+  past that usually means idle TC time or too few villagers on food before the click.
+severity: high
+confidence_tier: exact
+
+detector:
+  fn: slow_feudal
+  inputs: [ages.feudal_arrival_s]
+  params:
+    # Generic per-pop band upper edge (AoE Library) used when no confident build match is available.
+    # When #3 passes a build_target, the detector judges against THAT build's band instead.
+    generic_max_s: 720
+  condition: "feudal_arrival_s > (build_target.feudal.max_s or generic_max_s)"
+
+fix: >
+  Hit your villager count target before clicking up (commonly ~22-24 on food/wood for a standard
+  Feudal), keep the TC working continuously, and don't over-collect resources you don't need to age.
+
+source:
+  ref: "aoe-library-perfect-uptimes"
+  detail: "Per-pop uptime band; standard Feudal lands ~9:00-11:00 on open maps"
+  study:
+    url: "https://aoe-library.com/perfect-uptimes/"
+    title: "AoE Library — Perfect Uptimes (Feudal targets per pop)"

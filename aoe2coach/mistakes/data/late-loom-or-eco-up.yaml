@@ -1,0 +1,37 @@
+id: late-loom-or-eco-up
+name: "Late or missing eco upgrade"
+explanation: >
+  Eco upgrades pay for themselves fast: Wheelbarrow and Hand Cart speed every villager, Double-Bit
+  Axe / Bow Saw boost wood, mining upgrades boost gold and stone. Getting them late (or skipping
+  them) quietly caps your whole economy — the cost is invisible but compounds every minute.
+severity: medium
+confidence_tier: exact
+
+detector:
+  fn: late_or_missing_eco_up
+  inputs: [techs.eco, ages.feudal_arrival_s, ages.castle_arrival_s]
+  params:
+    # deadline_s is measured FROM the gating age's arrival; only judged once that age is reached.
+    deadlines:
+      Wheelbarrow:
+        after: castle
+        deadline_s: 240
+      "Double-Bit Axe":
+        after: feudal
+        deadline_s: 240
+      "Horse Collar":
+        after: feudal
+        deadline_s: 300
+  condition: "for each upgrade: t_s > age_arrival_s + deadline_s, or missing after its gating age"
+
+fix: >
+  Fold eco upgrades into your build as standing habits: Wheelbarrow + lumber/mining-camp upgrades
+  early in Castle Age, Double-Bit Axe in Feudal. Queue them from the relevant building as soon as you
+  age up rather than "when you remember".
+
+source:
+  ref: "sotl-eco-upgrades"
+  detail: "Wheelbarrow ROI pays back at ~14-16 farms; eco ups compound per villager"
+  study:
+    url: "https://www.youtube.com/@SpiritOfTheLaw"
+    title: "Spirit of the Law — when eco upgrades pay off"
