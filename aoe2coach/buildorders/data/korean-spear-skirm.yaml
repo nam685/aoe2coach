@@ -1,0 +1,40 @@
+id: korean-spear-skirm
+name: "18 Vils Korean Spear Skirm Rush"
+source:
+  guide: "hera-strategy-guide-2025-04"
+  page: 22
+family: trash
+recommended_civs: [Koreans, Vietnamese, Italians]
+summary: >
+  A trash/no-gold open: spearmen + skirmishers in Feudal, leaning on cheap food/wood units. Korea's
+  free range/tower upgrades make it civ-flavoured but the fingerprint is generic trash pressure.
+
+age_targets:
+  feudal:   { arrival_s: 540, vils_at_click: 18 }
+  castle:   { arrival_s: null }
+  imperial: { arrival_s: null }
+
+eco_split:
+  dark_age:  { food: null, wood: null, gold: 0, stone: 0, total: 18 }
+  feudal:    { food: null, wood: null, gold: 0, stone: 0, total: 18 }   # no gold = trash
+  castle:    { food: null, wood: null, gold: null, stone: null, total: null }
+
+steps:
+  - { phase: dark_age, vils: 6, task: "6 villagers to sheep", pop: 6 }
+  - { phase: dark_age, task: "Click to Feudal at 18 pop" }
+  - { phase: feudal,   task: "Archery range -> skirmishers, barracks -> spears" }
+  - { phase: feudal,   task: "Trash floods, no gold spent; tower up vs aggression" }
+
+whats_next:
+  - "Skirm + spear trash war, add towers"
+  - "Castle: pikes + elite skirms + monks"
+
+signature:
+  first_military_buildings: ["Archery Range", Barracks]
+  first_military_unit: [Skirmisher, Spearman]
+  defining_units: [Skirmisher, Spearman]
+  feudal_arrival_band_s: [500, 590]
+  castle_arrival_band_s: null
+  vils_at_feudal_click: { target: 18, band: [16, 20] }
+  excludes_buildings: [Castle, Krepost, Donjon]
+  age_path: feudal_rush

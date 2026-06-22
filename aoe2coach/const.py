@@ -498,6 +498,84 @@ POP_PER_BUILDING = {
 POP_CAP = 200
 
 
+# --- Build-classifier (#3) unit-class normalisation (A.3) ---------------------------------------
+# Maps a specific unit NAME (as emitted by unit_name()) to its generic military class, so one
+# reference file's `first_military_unit` / `defining_units` set covers civ variants (a Briton
+# Longbowman and a Mayan Plumed Archer both count as "Archer"-class). Only names NOT already equal
+# to their class need an entry; unit_class() falls back to the name itself.
+UNIT_CLASS = {
+    # Archer line + archer-class uniques
+    "Crossbowman": "Archer",
+    "Arbalester": "Archer",
+    "Longbowman": "Archer",
+    "Elite Longbowman": "Archer",
+    "Chu Ko Nu": "Archer",
+    "Elite Chu Ko Nu": "Archer",
+    "Plumed Archer": "Archer",
+    "Elite Plumed Archer": "Archer",
+    "Rattan Archer": "Archer",
+    "Elite Rattan Archer": "Archer",
+    "Composite Bowman": "Archer",
+    "Elite Composite Bowman": "Archer",
+    "Slinger": "Archer",
+    # Skirmisher line
+    "Elite Skirmisher": "Skirmisher",
+    "Imperial Skirmisher": "Skirmisher",
+    "Genitour": "Skirmisher",
+    "Elite Genitour": "Skirmisher",
+    # Cavalry Archer line
+    "Heavy Cavalry Archer": "Cavalry Archer",
+    "Mangudai": "Cavalry Archer",
+    "Elite Mangudai": "Cavalry Archer",
+    "Camel Archer": "Cavalry Archer",
+    "Elite Camel Archer": "Cavalry Archer",
+    # Scout line
+    "Light Cavalry": "Scout Cavalry",
+    "Hussar": "Scout Cavalry",
+    "Winged Hussar": "Scout Cavalry",
+    "Magyar Huszar": "Scout Cavalry",
+    "Elite Magyar Huszar": "Scout Cavalry",
+    "Camel Scout": "Scout Cavalry",
+    # Knight line + knight-class uniques
+    "Cavalier": "Knight",
+    "Paladin": "Knight",
+    "Cataphract": "Knight",
+    "Elite Cataphract": "Knight",
+    "Konnik": "Knight",
+    "Elite Konnik": "Knight",
+    "Boyar": "Knight",
+    "Elite Boyar": "Knight",
+    "Leitis": "Knight",
+    "Elite Leitis": "Knight",
+    "Coustillier": "Knight",
+    "Elite Coustillier": "Knight",
+    # Militia/infantry line
+    "Man-at-Arms": "Militia",
+    "Long Swordsman": "Militia",
+    "Two-Handed Swordsman": "Militia",
+    "Champion": "Militia",
+    "Long Swordman": "Militia",
+    # Spear line
+    "Pikeman": "Spearman",
+    "Halberdier": "Spearman",
+    # Eagle line
+    "Eagle Scout": "Eagle Warrior",
+    "Elite Eagle Warrior": "Eagle Warrior",
+    # Camel line
+    "Heavy Camel Rider": "Camel Rider",
+    "Imperial Camel Rider": "Camel Rider",
+    # Battle Elephant line
+    "Elite Battle Elephant": "Battle Elephant",
+    # Steppe Lancer
+    "Elite Steppe Lancer": "Steppe Lancer",
+}
+
+
+def unit_class(name):
+    """Normalise a specific unit NAME to its generic military class (A.3). Falls back to the name."""
+    return UNIT_CLASS.get(name, name)
+
+
 def tech_name(tech_id):
     """Resolve a technology_id to a name across all tech maps; "#<id>" if unknown.
 

@@ -1,0 +1,43 @@
+id: scout-rush-1-stable
+name: "18 Vils 1-Stable Scouts"
+source:
+  guide: "hera-strategy-guide-2025-04"
+  page: 8
+family: scouts
+recommended_civs: [Franks, Huns, Mongols, Lithuanians, Magyars, Berbers]
+summary: >
+  The canonical scout open: one stable in Feudal, pump Scout Cavalry to harass villagers and
+  deny map control. Add farms + a second stable or transition as the game develops.
+
+age_targets:
+  feudal:   { arrival_s: 530, vils_at_click: 18 }   # perfect landing ~8:50
+  castle:   { arrival_s: null }
+  imperial: { arrival_s: null }
+
+eco_split:
+  dark_age:  { food: null, wood: null, gold: 0, stone: 0, total: 18 }
+  feudal:    { food: null, wood: null, gold: 0, stone: 0, total: 18 }
+  castle:    { food: null, wood: null, gold: null, stone: null, total: null }
+
+steps:
+  - { phase: dark_age, vils: 6, task: "6 villagers to sheep", pop: 6 }
+  - { phase: dark_age, vils: 4, task: "4 villagers to wood" }
+  - { phase: dark_age, vils: 1, task: "Lure boar with 1 villager" }
+  - { phase: dark_age, task: "Loom, then click up to Feudal at 18 pop" }
+  - { phase: feudal,   task: "Build a Stable, start Scout Cavalry" }
+  - { phase: feudal,   task: "Add farms, keep scouts coming, get bloodlines + forging" }
+
+whats_next:
+  - "All-in scouts: second stable, bloodlines, forging, +1 attack"
+  - "Transition to archers if the opponent walls"
+  - "Boom behind scout map control into Castle Age knights"
+
+signature:
+  first_military_buildings: [Stable]
+  first_military_unit: ["Scout Cavalry"]
+  defining_units: []                         # pure scouts: NO archers (sibling disambiguation)
+  feudal_arrival_band_s: [490, 580]
+  castle_arrival_band_s: null
+  vils_at_feudal_click: { target: 18, band: [16, 20] }
+  excludes_buildings: [Castle, Krepost, Donjon]
+  age_path: feudal_rush

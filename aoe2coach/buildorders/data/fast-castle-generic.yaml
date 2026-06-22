@@ -1,0 +1,42 @@
+id: fast-castle-generic
+name: "Generic Fast Castle"
+source:
+  guide: "hera-strategy-guide-2025-04"
+  page: 26
+family: fast_castle
+recommended_civs: [Mayans, Byzantines, Khmer, Italians, Bohemians]
+summary: >
+  Abstracted from the several FC variants (FC-on-Fortress, FC-Boom, FC-into-UU, FC-Light-Cav-Relic).
+  They share one early fingerprint — NO Feudal military, a late Feudal click, a fast Castle — and
+  only diverge in "what's next", captured as branches. Use when a fast castle has no committed unit.
+
+age_targets:
+  feudal:   { arrival_s: 610, vils_at_click: 22 }
+  castle:   { arrival_s: 960, vils_at_click: 28 }   # ~16:00
+  imperial: { arrival_s: null }
+
+eco_split:
+  dark_age:  { food: null, wood: null, gold: 0, stone: 0, total: 22 }
+  feudal:    { food: null, wood: null, gold: null, stone: 0, total: 24 }
+  castle:    { food: null, wood: null, gold: null, stone: null, total: 28 }
+
+steps:
+  - { phase: dark_age, vils: 6, task: "6 villagers to sheep", pop: 6 }
+  - { phase: feudal,   task: "Pure eco up-times, no military, click to Castle" }
+  - { phase: castle,   task: "Pick a follow-up: boom (2nd/3rd TC), UU, or crossbow+knights" }
+
+whats_next:
+  - "FC Boom: drop 2-3 town centers, then mass an army"
+  - "FC into Unique Unit (e.g. mangudai, war elephant, conquistador)"
+  - "FC into crossbow + knights"
+  - "FC Light-Cav + relic grab on relic-heavy maps"
+
+signature:
+  first_military_buildings: [Stable, "Archery Range", "Siege Workshop"]
+  first_military_unit: [Knight, Archer, "Cavalry Archer", Crossbowman, Monk]
+  defining_units: []                                # FC is defined by ABSENCE of feudal military
+  feudal_arrival_band_s: [560, 680]
+  castle_arrival_band_s: [870, 1080]                # ~14:30-18:00
+  vils_at_feudal_click: { target: 22, band: [20, 26] }
+  excludes_buildings: []
+  age_path: fast_castle

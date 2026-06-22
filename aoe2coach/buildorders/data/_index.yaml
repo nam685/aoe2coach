@@ -1,0 +1,17 @@
+# Build-order reference library index (sub-project #3, Part A.1).
+# Ordered list + display metadata for the whole library. The classifier does NOT read this file
+# (it globs *.yaml and skips _-prefixed files); it exists for humans and #4's display layer.
+# Add a new build by adding its data/<id>.yaml — no code change; append it here for ordering.
+guide: "hera-strategy-guide-2025-04"
+builds:
+  - { id: scout-rush-1-stable,     family: scouts,     age_path: feudal_rush }
+  - { id: scouts-into-archers,     family: scouts,     age_path: feudal_rush }
+  - { id: scouts-into-cav-archers, family: scouts,     age_path: feudal_rush }
+  - { id: generic-maa-rush,        family: maa,        age_path: feudal_rush }
+  - { id: maa-into-skirms,         family: maa,        age_path: feudal_rush }
+  - { id: feudal-drush,            family: drush,      age_path: feudal_rush }
+  - { id: archers-1-range,         family: archers,    age_path: feudal_rush }
+  - { id: korean-spear-skirm,      family: trash,      age_path: feudal_rush }
+  - { id: knight-rush,             family: knights,    age_path: fast_castle }
+  - { id: fast-castle-generic,     family: fast_castle, age_path: fast_castle }
+  - { id: drush-fast-castle,       family: drush_fc,   age_path: drush_fc }

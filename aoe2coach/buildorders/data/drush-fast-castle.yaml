@@ -1,0 +1,40 @@
+id: drush-fast-castle
+name: "27+2 Vils Drush Fast Castle"
+source:
+  guide: "hera-strategy-guide-2025-04"
+  page: 28
+family: drush_fc
+recommended_civs: [Mayans, Aztecs, Ethiopians, Malians, Incas]
+summary: >
+  A dark-age 3-militia drush to slow the opponent, then a fast castle behind the harass. Distinct
+  fingerprint: early Barracks + a few militia, NO heavy feudal commitment, then a fast Castle.
+
+age_targets:
+  feudal:   { arrival_s: 620, vils_at_click: 23 }
+  castle:   { arrival_s: 1000, vils_at_click: 29 }  # ~16:40, a touch slower than pure FC
+  imperial: { arrival_s: null }
+
+eco_split:
+  dark_age:  { food: null, wood: null, gold: 0, stone: 0, total: 23 }
+  feudal:    { food: null, wood: null, gold: null, stone: 0, total: 27 }
+  castle:    { food: null, wood: null, gold: null, stone: null, total: 29 }
+
+steps:
+  - { phase: dark_age, vils: 6, task: "6 villagers to sheep", pop: 6 }
+  - { phase: dark_age, task: "Barracks ~22 pop, 3 militia to harass" }
+  - { phase: feudal,   task: "No further military, pure eco to Castle" }
+  - { phase: castle,   task: "Crossbow + knights, or boom" }
+
+whats_next:
+  - "Drush-FC into crossbow + knights"
+  - "Drush-FC into boom"
+
+signature:
+  first_military_buildings: [Barracks]
+  first_military_unit: [Militia]
+  defining_units: [Militia]
+  feudal_arrival_band_s: [560, 700]
+  castle_arrival_band_s: [900, 1120]                # ~15:00-18:40
+  vils_at_feudal_click: { target: 23, band: [20, 26] }
+  excludes_buildings: []
+  age_path: drush_fc

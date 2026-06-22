@@ -1,0 +1,41 @@
+id: scouts-into-cav-archers
+name: "18 Vils Scouts into Cavalry Archers"
+source:
+  guide: "hera-strategy-guide-2025-04"
+  page: 12
+family: scouts
+recommended_civs: [Mongols, Huns, Tatars, Magyars]
+summary: >
+  Open scouts, then transition to cavalry archers in Feudal. Distinct from scouts-into-archers by
+  its defining unit: Cavalry Archer (mobile, gold-heavy), favoured by CA-bonus civs.
+
+age_targets:
+  feudal:   { arrival_s: 530, vils_at_click: 18 }
+  castle:   { arrival_s: null }
+  imperial: { arrival_s: null }
+
+eco_split:
+  dark_age:  { food: null, wood: null, gold: 0, stone: 0, total: 18 }
+  feudal:    { food: null, wood: null, gold: null, stone: 0, total: 18 }
+  castle:    { food: null, wood: null, gold: null, stone: null, total: null }
+
+steps:
+  - { phase: dark_age, vils: 6, task: "6 villagers to sheep", pop: 6 }
+  - { phase: dark_age, vils: 1, task: "Lure boar", pop: 9 }
+  - { phase: dark_age, task: "Click to Feudal at 18 pop" }
+  - { phase: feudal,   task: "Stable, start scouts" }
+  - { phase: feudal,   task: "Archery range, transition to cavalry archers, get mining + gold" }
+
+whats_next:
+  - "Castle Age: heavy cavalry archers + Parthian Tactics"
+  - "Mix in light cav / knights against skirms"
+
+signature:
+  first_military_buildings: [Stable, "Archery Range"]
+  first_military_unit: ["Scout Cavalry"]
+  defining_units: ["Cavalry Archer"]
+  feudal_arrival_band_s: [490, 580]
+  castle_arrival_band_s: null
+  vils_at_feudal_click: { target: 18, band: [16, 20] }
+  excludes_buildings: [Castle, Krepost, Donjon]
+  age_path: feudal_rush

@@ -1,0 +1,40 @@
+id: archers-1-range
+name: "19 Vils 1-Range Archers"
+source:
+  guide: "hera-strategy-guide-2025-04"
+  page: 20
+family: archers
+recommended_civs: [Britons, Mayans, Ethiopians, Vietnamese, Italians]
+summary: >
+  Straight archers: one archery range in Feudal, no scout opener. The first military unit IS the
+  archer (no scouts first), distinguishing it from scouts-into-archers.
+
+age_targets:
+  feudal:   { arrival_s: 550, vils_at_click: 19 }
+  castle:   { arrival_s: null }
+  imperial: { arrival_s: null }
+
+eco_split:
+  dark_age:  { food: null, wood: null, gold: 0, stone: 0, total: 19 }
+  feudal:    { food: 8, wood: 9, gold: 2, stone: 0, total: 19 }
+  castle:    { food: null, wood: null, gold: null, stone: null, total: null }
+
+steps:
+  - { phase: dark_age, vils: 6, task: "6 villagers to sheep", pop: 6 }
+  - { phase: dark_age, task: "Extra on wood + gold, click to Feudal at 19 pop" }
+  - { phase: feudal,   task: "Archery Range, pump archers, Fletching" }
+  - { phase: feudal,   task: "Second range or add skirms behind" }
+
+whats_next:
+  - "Castle: crossbow + a couple knights"
+  - "Add skirms vs skirm wars"
+
+signature:
+  first_military_buildings: ["Archery Range"]
+  first_military_unit: [Archer]
+  defining_units: [Archer]
+  feudal_arrival_band_s: [510, 600]
+  castle_arrival_band_s: null
+  vils_at_feudal_click: { target: 19, band: [17, 21] }
+  excludes_buildings: [Castle, Krepost, Donjon]
+  age_path: feudal_rush

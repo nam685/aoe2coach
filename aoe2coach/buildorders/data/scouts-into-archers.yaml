@@ -1,0 +1,43 @@
+id: scouts-into-archers
+name: "18 Vils Scouts into Archers"
+source:
+  guide: "hera-strategy-guide-2025-04"
+  page: 10
+family: scouts
+recommended_civs: [Chinese, Huns, Malians, Portuguese, Vietnamese]
+summary: >
+  Open scouts, then transition to archers in Feudal. Flexible: heavy Feudal + bloodlines,
+  or save for a faster Castle crossbow timing. Defining signal: BOTH scouts and archers appear.
+
+age_targets:
+  feudal:   { arrival_s: 530, vils_at_click: 18 }   # perfect landing ~8:50
+  castle:   { arrival_s: null }
+  imperial: { arrival_s: null }
+
+eco_split:
+  dark_age:  { food: null, wood: null, gold: 0, stone: 0, total: 18 }
+  feudal:    { food: 9, wood: 9, gold: 0, stone: 0, total: 18 }
+  castle:    { food: null, wood: null, gold: null, stone: null, total: null }
+
+steps:
+  - { phase: dark_age, vils: 6, task: "6 villagers to sheep", pop: 6 }
+  - { phase: dark_age, vils: 1, task: "Lure boar", pop: 9 }
+  - { phase: dark_age, task: "Loom, click to Feudal at 18 pop" }
+  - { phase: feudal,   task: "Make a stable, start scouts" }
+  - { phase: feudal,   task: "Add an archery range, transition to archers" }
+  - { phase: feudal,   task: "Fletching, keep archers + a few scouts" }
+
+whats_next:
+  - "All-in Feudal: keep adding farms + scouts, get bloodlines + forging/cav armor"
+  - "Save for Castle Age crossbow timing"
+  - "Castle: crossbow + a few knights to counter skirms/siege"
+
+signature:
+  first_military_buildings: [Stable, "Archery Range"]
+  first_military_unit: ["Scout Cavalry"]
+  defining_units: [Archer]                   # MUST show archers, else it's a pure scout rush
+  feudal_arrival_band_s: [490, 580]
+  castle_arrival_band_s: null
+  vils_at_feudal_click: { target: 18, band: [16, 20] }
+  excludes_buildings: [Castle, Krepost, Donjon]
+  age_path: feudal_rush

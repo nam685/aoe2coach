@@ -1,0 +1,42 @@
+id: feudal-drush
+name: "18 Vils Feudal Drush"
+source:
+  guide: "hera-strategy-guide-2025-04"
+  page: 18
+family: drush
+recommended_civs: [Aztecs, Mayans, Incas, Ethiopians]
+summary: >
+  A dark-age Barracks producing 3 Militia to harass the opponent's economy, transitioning into a
+  normal Feudal follow-up (archers or skirms). Distinct from MAA: militia are made in the DARK AGE
+  and usually NOT upgraded to Man-at-Arms.
+
+age_targets:
+  feudal:   { arrival_s: 560, vils_at_click: 18 }   # drush delays the click slightly
+  castle:   { arrival_s: null }
+  imperial: { arrival_s: null }
+
+eco_split:
+  dark_age:  { food: null, wood: null, gold: 0, stone: 0, total: 18 }
+  feudal:    { food: null, wood: null, gold: null, stone: 0, total: 18 }
+  castle:    { food: null, wood: null, gold: null, stone: null, total: null }
+
+steps:
+  - { phase: dark_age, vils: 6, task: "6 villagers to sheep", pop: 6 }
+  - { phase: dark_age, task: "Barracks ~22 pop, make 3 Militia, send to harass" }
+  - { phase: dark_age, task: "Click to Feudal while militia raid" }
+  - { phase: feudal,   task: "Add range/skirms or archers as the main army" }
+
+whats_next:
+  - "Drush into archers"
+  - "Drush into fast castle (see drush-fast-castle)"
+  - "Drush into scouts"
+
+signature:
+  first_military_buildings: [Barracks]
+  first_military_unit: [Militia]
+  defining_units: [Militia]
+  feudal_arrival_band_s: [520, 620]
+  castle_arrival_band_s: null
+  vils_at_feudal_click: { target: 18, band: [15, 21] }
+  excludes_buildings: [Castle, Krepost, Donjon]
+  age_path: feudal_rush

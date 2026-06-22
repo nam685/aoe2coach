@@ -1,0 +1,42 @@
+id: generic-maa-rush
+name: "18 Vils Generic Modern Man-at-Arms Rush"
+source:
+  guide: "hera-strategy-guide-2025-04"
+  page: 14
+family: maa
+recommended_civs: [Japanese, Vikings, Malians, Teutons, Celts]
+summary: >
+  The MAA baseline: a Feudal Barracks producing Militia upgraded to Man-at-Arms, applying early
+  infantry pressure. Folds in civ eco quirks (e.g. Japanese MAA) per A.3 — generic file.
+
+age_targets:
+  feudal:   { arrival_s: 510, vils_at_click: 18 }   # MAA pushes up slightly earlier
+  castle:   { arrival_s: null }
+  imperial: { arrival_s: null }
+
+eco_split:
+  dark_age:  { food: null, wood: null, gold: 0, stone: 0, total: 18 }
+  feudal:    { food: null, wood: null, gold: null, stone: 0, total: 18 }
+  castle:    { food: null, wood: null, gold: null, stone: null, total: null }
+
+steps:
+  - { phase: dark_age, vils: 6, task: "6 villagers to sheep", pop: 6 }
+  - { phase: dark_age, task: "Build a Barracks before clicking up" }
+  - { phase: dark_age, task: "Click to Feudal at 18 pop" }
+  - { phase: feudal,   task: "Pump Militia, research Man-at-Arms immediately" }
+  - { phase: feudal,   task: "Add a range for skirms/archers as a follow-up" }
+
+whats_next:
+  - "MAA into archers (pressure then ranged)"
+  - "MAA into skirms vs archer civs"
+  - "MAA into towers (forward aggression)"
+
+signature:
+  first_military_buildings: [Barracks]
+  first_military_unit: [Militia]              # Man-at-Arms normalises to Militia class
+  defining_units: [Militia]
+  feudal_arrival_band_s: [470, 560]
+  castle_arrival_band_s: null
+  vils_at_feudal_click: { target: 18, band: [16, 20] }
+  excludes_buildings: [Castle, Krepost, Donjon]
+  age_path: feudal_rush

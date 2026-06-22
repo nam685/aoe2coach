@@ -1,0 +1,41 @@
+id: knight-rush
+name: "25+4 Vils Knight Rush"
+source:
+  guide: "hera-strategy-guide-2025-04"
+  page: 24
+family: knights
+recommended_civs: [Franks, Persians, Lithuanians, Berbers, Cumans]
+summary: >
+  The fast-castle-into-knights baseline: skip Feudal military, push to Castle Age with ~25 vils,
+  add a stable and pump knights. No early aggression; the first military unit is the knight.
+
+age_targets:
+  feudal:   { arrival_s: 600, vils_at_click: 22 }
+  castle:   { arrival_s: 920, vils_at_click: 29 }   # ~15:20 fast castle
+  imperial: { arrival_s: null }
+
+eco_split:
+  dark_age:  { food: null, wood: null, gold: 0, stone: 0, total: 22 }
+  feudal:    { food: null, wood: null, gold: null, stone: 0, total: 25 }
+  castle:    { food: null, wood: null, gold: null, stone: null, total: 29 }
+
+steps:
+  - { phase: dark_age, vils: 6, task: "6 villagers to sheep", pop: 6 }
+  - { phase: feudal,   task: "Loom + wheelbarrow eco, no military, click to Castle" }
+  - { phase: castle,   task: "Stable(s), pump Knights, bloodlines" }
+  - { phase: castle,   task: "Add a second stable + forging/armor" }
+
+whats_next:
+  - "Knights + siege into Imperial"
+  - "Add monks vs heavy knight mirror"
+  - "Boom behind knight map control"
+
+signature:
+  first_military_buildings: [Stable]
+  first_military_unit: [Knight]
+  defining_units: [Knight]
+  feudal_arrival_band_s: [560, 660]
+  castle_arrival_band_s: [840, 1040]               # ~14:00-17:20
+  vils_at_feudal_click: { target: 22, band: [20, 25] }
+  excludes_buildings: []                            # a Castle here is fine (it IS castle age)
+  age_path: fast_castle
