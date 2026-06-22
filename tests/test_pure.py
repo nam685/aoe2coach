@@ -1,6 +1,11 @@
+import json
+from unittest.mock import MagicMock, patch
+
 from mgz.fast import Action
 
+from aoe2coach import coach as coach_mod
 from aoe2coach import const
+from aoe2coach.coach import BENCHMARKS, CoachOutput, build_coach_prompt, coach, parse_opening
 from aoe2coach.metrics import compute_metrics
 from aoe2coach.timeline import build_timeline, render_dual_log
 
@@ -57,3 +62,50 @@ def test_render_dual_log_roles_and_format():
             assert parts[1] in {"ME", "OPP"}
     assert "OPP BUILD Stable" in log
     assert log.rstrip().endswith("APM total_actions=6")
+
+
+def test_benchmarks_sliced_verbatim():
+    # The 6 benchmark rows must be present and the slice must be a substring of COACH_SYSTEM.
+    assert BENCHMARKS.startswith("AoE2 1v1 benchmark uptimes")
+    assert BENCHMARKS in coach_mod.COACH_SYSTEM
+    for row in ["Scouts opening", "Archers opening", "Drush", "Fast Castle", "Tower Rush"]:
+        assert row in BENCHMARKS
+    assert "Key metrics" not in BENCHMARKS  # end anchor excluded
+
+
+def test_build_coach_prompt_structure_unchanged():
+    metrics = {
+        "feudal_uptime_s": 715,
+        "castle_uptime_s": None,
+        "imperial_uptime_s": None,
+        "apm": 80,
+        "villager_count": 25,
+        "army": [{"name": "Archer", "amount": 12}],
+        "eco_tech_timings": [{"name": "Double-Bit Axe", "t_s": 610}],
+    }
+    p = build_coach_prompt("00:00 APM total_actions=6", metrics)
+    assert p.startswith(coach_mod.COACH_SYSTEM)
+    assert "=== METRICS SUMMARY ===" in p
+    assert "=== SALIENT LOG ===" in p
+    assert p.rstrip().endswith("Now write the coach report.")
+
+
+def test_parse_opening():
+    assert parse_opening("OPENING: Scouts\n\nbody") == "Scouts"
+    assert parse_opening("no tag here") == ""
+
+
+def test_coach_mocks_subprocess_and_extracts_fields():
+    fake = json.dumps(
+        {"result": "OPENING: Archers\n\nGood archer opening.", "model": "claude-sonnet-4-5", "is_error": False}
+    )
+    with patch("aoe2coach.coach.subprocess.run") as run:
+        run.return_value = MagicMock(returncode=0, stdout=fake, stderr="")
+        out = coach({"apm": 80}, "00:00 APM total_actions=6", model="sonnet")
+    assert isinstance(out, CoachOutput)
+    assert out.raw_text == "OPENING: Archers\n\nGood archer opening."
+    assert out.opening_tag == "Archers"
+    assert out.model_used == "claude-sonnet-4-5"
+    # subprocess invoked with the exact CLI contract
+    args = run.call_args.args[0]
+    assert args[:2] == ["claude", "-p"] and "--output-format" in args and "json" in args
