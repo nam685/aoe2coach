@@ -1,8 +1,15 @@
 """Standalone AoE2 DE 1v1 coach core. Shared by nam-website prod + elluminate eval."""
 
-from . import buildorders, combat, const, efficiency, population, spatial
+from . import buildorders, combat, const, econ, efficiency, gaia, population, rates, spatial
 from .classify import Candidate, ClassificationResult, classify
 from .coach import BENCHMARKS, CoachOutput, build_coach_prompt, coach, parse_opening, run_claude_coach
+from .econ import (
+    assignment_events,
+    collected_estimate,
+    eco_split_at_ages,
+    eco_split_steps,
+    estimate_economy,
+)
 from .entrypoint import analyze_replay
 from .metrics import compute_metrics, first_military_building, production_milestones
 from .parser import ParsedRec, parse_rec
@@ -16,9 +23,17 @@ __all__ = [
     "ClassificationResult",
     "classify",
     "combat",
+    "econ",
     "efficiency",
+    "gaia",
     "population",
+    "rates",
     "spatial",
+    "assignment_events",
+    "collected_estimate",
+    "eco_split_at_ages",
+    "eco_split_steps",
+    "estimate_economy",
     "BENCHMARKS",
     "CoachOutput",
     "build_coach_prompt",
