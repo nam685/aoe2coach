@@ -1,4 +1,13 @@
-"""LLM coach for AoE2 1v1 matches — shells out to `claude -p`."""
+"""LLM coach for AoE2 1v1 matches — shells out to `claude -p`.
+
+Two paths:
+  - v1 (legacy): `build_coach_prompt` + embedded-benchmark `COACH_SYSTEM`, one `claude -p` call.
+  - v2 (agentic): `run_agentic_coach` runs `claude -p` AS AN AGENT over a per-match workspace
+    (workspace.py), with read-only tools (Read/Grep/Glob) and the v2 system prompt
+    (`COACH_SYSTEM_V2`) — progressive disclosure of #3 references, source-cited targets, no
+    invented benchmarks. Falls back to the single-shot facts-only path
+    (`build_coach_prompt_v2`) and finally to v1.
+"""
 
 import json
 import logging
@@ -6,7 +15,15 @@ import re
 import subprocess
 from dataclasses import dataclass
 
+from .workspace import build_candidates_md, build_workspace
+
 logger = logging.getLogger(__name__)
+
+# Default agentic settings (pinned against the installed CLI, 2.1.x).
+# `dontAsk` = non-interactive auto-deny for non-allowlisted tools (deny-not-hang in -p mode).
+PERMISSION_MODE = "dontAsk"
+READONLY_TOOLS = ("Read", "Grep", "Glob")
+DEFAULT_WIKI_DOMAIN = "age-of-empires-2.fandom.com"
 
 # ---------------------------------------------------------------------------
 # Benchmark knowledge embedded in the prompt (no API roundtrip for this)
@@ -111,18 +128,185 @@ def build_coach_prompt(salient_log: str, metrics: dict) -> str:
     )
 
 
-_OPENING_RE = re.compile(r"^OPENING:\s*(.+)", re.MULTILINE)
+# Matches BOTH the legacy v1 standalone "OPENING: <tag>" line AND the v2
+# WHAT-HAPPENED first bullet "- Opening: <tag>".
+_OPENING_RE = re.compile(
+    r"^\s*(?:-\s*)?OPENING:\s*(.+)|^\s*-\s*Opening:\s*(.+)",
+    re.MULTILINE | re.IGNORECASE,
+)
 
 
 def parse_opening(text: str) -> str:
-    """Extract the OPENING tag from the first line of the coach report.
+    """Extract the opening tag — from a legacy `OPENING:` line or a v2 `- Opening:` bullet.
 
     Returns the tag string, or empty string if not found.
     """
     m = _OPENING_RE.search(text)
     if m:
-        return m.group(1).strip()
+        return (m.group(1) or m.group(2) or "").strip()
     return ""
+
+
+# ---------------------------------------------------------------------------
+# Coach v2 — agentic, progressive-disclosure, source-cited (sub-project #4)
+# ---------------------------------------------------------------------------
+
+COACH_SYSTEM_V2 = """\
+You are a concise, precise Age of Empires II: Definitive Edition 1v1 coaching assistant
+operating as an AGENT with file tools in this workspace.
+
+Authoritative inputs in your cwd:
+  facts.json     — STRUCTURED MATCH FACTS (#1 Reconstruction). All numbers come from here.
+                   *_produced counts are cumulative-queued upper bounds, NOT live counts —
+                   never present them as live army/villager totals.
+  salient.log    — mechanical event log; use ONLY for sequence/context, never for numbers.
+  candidates.md  — 1-3 pre-narrowed build orders, each with a reference file path.
+  references/    — the build-order reference library (Hera targets). Read on demand.
+  mistakes.json  — deterministically flagged mistakes (#6). [] means NO mistake was detected —
+                   say so honestly; do not invent one. Each entry has a confidence_tier
+                   (exact | heuristic | needs-#2): hedge heuristic/needs-#2 calls accordingly.
+  economy.json   — ESTIMATED economy (#2). It is coarse and may self-suppress numbers
+                   (collected=null). Treat it qualitatively; NEVER present it as exact.
+  strategic_map.png (+ engagement_NN.png) — the strategic map IMAGES (#7). READ them for spatial
+                   context: base layout, forward buildings, walls, and where pressure happened.
+  map_legend.md  — what the map colors/markers mean (operational macro only, not unit micro).
+
+AGE TIMINGS: judge ages by ARRIVAL time (facts.ages.*_arrival_s), not click time.
+
+PROCESS (follow in order):
+  1. Read facts.json.
+  2. Form a build hypothesis from the early facts (first buildings, first units, age timing).
+  3. READ the matching candidate's reference file (Read references/<file>). If none of the
+     candidates fits what the facts show, Grep references/ and read the build that does — and
+     say the classifier's candidates were off.
+  4. Read the strategic_map.png image(s) for spatial context (base, forward, walls, pressure).
+  5. Judge actual-vs-target using ONLY the targets in the reference you read. If a target isn't
+     in any reference and you didn't verify it, do NOT assert a number — say it's unverified.
+
+You MUST record these markers when present (record ALL — do not decide which matter): opening,
+age-up ARRIVAL times, army composition, first military building, first siege, first treb,
+forward buildings, eco/military tech timings, villager idle time, and HOW THE GAME ENDED
+(who won + the mechanism, e.g. "opponent resigned after losing eco to archer raids").
+
+OUTPUT — plain text, exactly two sections:
+
+  WHAT HAPPENED
+  - Opening: <tag>   (one of: scouts, archers, maa_archers, drush, fast_castle, tower_rush, unknown)
+  - then 4-7 short FACTUAL bullets restating the markers above (timings, comp, outcome).
+    Facts only here — no judgment.
+
+  ANALYSIS
+  - 3-4 short prose paragraphs of JUDGMENT only: uptime vs the reference target you read
+    (cite it, e.g. "Hera's Fast Castle lands Feudal ~8:50; you hit 9:34 — 44s slow"),
+    eco/production, the single most impactful observation, and one concrete next-game change.
+    Do NOT restate raw facts here.
+
+Cite every benchmark to the reference file or wiki page you read. Do NOT emit a standalone
+"OPENING:" line — the opening is the first bullet of WHAT HAPPENED. Keep the whole report
+under ~340 words. No fluff, no praise padding.
+"""
+
+
+def build_coach_prompt_v2(facts: dict, salient_log: str, candidates_md: str = "") -> str:
+    """Single-shot facts-only fallback prompt (degradation tier 3).
+
+    Embeds the facts block + salient log + (budget-permitting) candidate names inline, with NO
+    tools / no progressive disclosure. Used when the agentic run can't run (claude missing/unauthed,
+    non-zero exit, non-JSON, timeout, is_error, empty result, or claude_bin lacks the tool loop).
+    Reuses COACH_SYSTEM_V2's contract (restate-before-judge, cite, don't invent) minus the tools.
+    """
+    facts_block = json.dumps(facts, indent=2)
+    cand_block = f"\n=== CANDIDATE BUILDS ===\n{candidates_md}\n" if candidates_md else ""
+    return (
+        f"{COACH_SYSTEM_V2}\n\n"
+        "(No file tools available — the facts are inlined below. You cannot Read reference files;\n"
+        "judge from these facts and only cite a target if you are certain of it, else say unverified.)\n\n"
+        "=== FACTS (facts.json) ===\n"
+        f"{facts_block}\n"
+        f"{cand_block}\n"
+        "=== SALIENT LOG ===\n"
+        f"{salient_log}\n\n"
+        "Now produce WHAT HAPPENED + ANALYSIS."
+    )
+
+
+def _build_agentic_argv(
+    task_prompt: str,
+    model: str,
+    claude_bin: str,
+    max_turns: int,
+    web_domain: str | None,
+) -> list[str]:
+    """Assemble the `claude -p` argv for the agentic run (read-only tools, JSON output)."""
+    allowed = list(READONLY_TOOLS)
+    if web_domain:
+        allowed.append(f"WebFetch(domain:{web_domain})")
+    argv = [
+        claude_bin,
+        "-p",
+        task_prompt,
+        "--model",
+        model,
+        "--output-format",
+        "json",
+        "--append-system-prompt",
+        COACH_SYSTEM_V2,
+        "--allowedTools",
+        *allowed,
+        "--permission-mode",
+        PERMISSION_MODE,
+        "--max-turns",
+        str(max_turns),
+    ]
+    return argv
+
+
+def _model_from_data(data: dict) -> str:
+    """Best-effort model id from the CLI JSON (top-level `model`, else a modelUsage key)."""
+    if data.get("model"):
+        return data["model"]
+    mu = data.get("modelUsage") or {}
+    if isinstance(mu, dict) and mu:
+        return next(iter(mu.keys()))
+    return ""
+
+
+def run_agentic_coach(
+    workspace,
+    model: str = "sonnet",
+    claude_bin: str = "claude",
+    timeout: int = 180,
+    max_turns: int = 12,
+    web_domain: str | None = None,
+    runner=subprocess.run,
+) -> tuple[str, str]:
+    """Run the agentic coach (`claude -p` AS AN AGENT) over a prepared workspace dir.
+
+    Returns (result_text, model_used). Raises RuntimeError on any failure mode the prod wrapper
+    treats as "fall back to single-shot": non-zero exit, non-JSON, is_error, or empty result.
+    `runner` is injectable (defaults to subprocess.run) so tests never spawn a real CLI.
+    """
+    task_prompt = (workspace / "TASK.md").read_text(encoding="utf-8")
+    argv = _build_agentic_argv(task_prompt, model, claude_bin, max_turns, web_domain)
+    result = runner(
+        argv,
+        cwd=str(workspace),
+        capture_output=True,
+        text=True,
+        timeout=timeout,
+    )
+    if result.returncode != 0:
+        raise RuntimeError(f"claude exited {result.returncode}: {result.stderr.strip()[:500]}")
+    try:
+        data = json.loads(result.stdout)
+    except json.JSONDecodeError as exc:
+        raise RuntimeError(f"claude returned non-JSON output: {exc}") from exc
+    if data.get("is_error"):
+        raise RuntimeError(f"claude reported is_error: {str(data.get('result'))[:300]}")
+    text = data.get("result", "")
+    if not text:
+        raise RuntimeError("claude JSON response missing 'result' field")
+    return text, _model_from_data(data)
 
 
 def run_claude_coach(
@@ -161,6 +345,66 @@ class CoachOutput:
     raw_text: str
     opening_tag: str
     model_used: str
+    tier: str = "v1"  # which degradation tier produced this: agentic | facts-only | v1
+
+
+def _coach_v2(
+    *,
+    reconstruction,
+    candidates,
+    salient_log: str,
+    reference_root,
+    economy,
+    mistakes,
+    map_pngs,
+    model: str,
+    claude_bin: str,
+    timeout: int,
+    max_turns: int,
+    web_domain: str | None,
+    runner,
+) -> CoachOutput:
+    """The v2 path: build a workspace, run the agentic coach, fall back to single-shot facts-only.
+
+    Tier ladder (each strictly weaker but useful):
+      1/2. agentic (with/without web) — workspace + read-only tool loop + progressive disclosure.
+      3.   facts-only single-shot — if the agentic run fails for ANY reason.
+    Tier is recorded on CoachOutput.tier and suffixed onto model_used.
+    """
+    recon = reconstruction.to_dict() if hasattr(reconstruction, "to_dict") else reconstruction
+    candidates_md = build_candidates_md(candidates)
+    try:
+        with build_workspace(
+            reconstruction,
+            candidates,
+            reference_root=reference_root,
+            salient_log=salient_log,
+            economy=economy,
+            mistakes=mistakes,
+            map_pngs=map_pngs,
+        ) as ws:
+            raw_text, model_used = run_agentic_coach(
+                ws,
+                model=model,
+                claude_bin=claude_bin,
+                timeout=timeout,
+                max_turns=max_turns,
+                web_domain=web_domain,
+                runner=runner,
+            )
+        return CoachOutput(
+            raw_text=raw_text, opening_tag=parse_opening(raw_text), model_used=model_used, tier="agentic"
+        )
+    except Exception as exc:  # any failure -> single-shot facts-only fallback (tier 3)
+        logger.warning("agentic coach failed (%s); falling back to single-shot facts-only", exc)
+        prompt = build_coach_prompt_v2(recon, salient_log, candidates_md)
+        raw_text, model_used = run_claude_coach(prompt, model=model, claude_bin=claude_bin, timeout=timeout)
+        return CoachOutput(
+            raw_text=raw_text,
+            opening_tag=parse_opening(raw_text),
+            model_used=f"{model_used}+facts-only",
+            tier="facts-only",
+        )
 
 
 def coach(
@@ -170,14 +414,45 @@ def coach(
     result: str = "unknown",  # noqa: ARG001 — eval-contract interface; baseline prompt does not consume result
     model: str = "sonnet",
     claude_bin: str = "claude",
+    *,
+    reconstruction=None,
+    candidates=None,
+    reference_root=None,
+    economy=None,
+    mistakes=None,
+    map_pngs=None,
+    timeout: int = 180,
+    max_turns: int = 12,
+    web_domain: str | None = None,
+    runner=subprocess.run,
 ) -> CoachOutput:
     """Pure, side-effect-free coach call shared by prod and the eval.
 
-    `benchmarks` and `result` are accepted for the eval contract; the baseline prompt
-    behavior is unchanged (the benchmark table is already inside COACH_SYSTEM, and the
-    current prompt does not consume `result`). Raises on subprocess/JSON failure — the
-    prod wrapper owns graceful degradation.
+    Two paths, selected additively:
+      - v2 (agentic): when `reconstruction` is passed, run the agentic coach over a per-match
+        workspace (progressive disclosure of #3 references, the #7 map images, source-cited
+        targets), degrading to a single-shot facts-only call on any failure.
+      - v1 (legacy): when `reconstruction` is None, the original embedded-benchmark path runs
+        byte-identically for old callers.
+
+    `benchmarks`/`result` remain accepted for the eval contract; v1 behavior is unchanged.
     """
+    if reconstruction is not None:
+        return _coach_v2(
+            reconstruction=reconstruction,
+            candidates=candidates,
+            salient_log=salient_log,
+            reference_root=reference_root,
+            economy=economy,
+            mistakes=mistakes,
+            map_pngs=map_pngs,
+            model=model,
+            claude_bin=claude_bin,
+            timeout=timeout,
+            max_turns=max_turns,
+            web_domain=web_domain,
+            runner=runner,
+        )
     prompt = build_coach_prompt(salient_log, metrics)
     raw_text, model_used = run_claude_coach(prompt, model=model, claude_bin=claude_bin)
-    return CoachOutput(raw_text=raw_text, opening_tag=parse_opening(raw_text), model_used=model_used)
+    return CoachOutput(raw_text=raw_text, opening_tag=parse_opening(raw_text), model_used=model_used, tier="v1")

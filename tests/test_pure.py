@@ -145,7 +145,9 @@ def test_analyze_replay_data_contract():
             ),
         ),
     ):
-        row = ep.analyze_replay("/fake.aoe2record", 42, elo_band="mid")
+        # use_v2=False exercises the legacy single-shot contract (v2 adds facts_json/coach_tier
+        # additively — covered in tests/test_coach_v2.py against the full bundle).
+        row = ep.analyze_replay("/fake.aoe2record", 42, elo_band="mid", use_v2=False)
 
     assert set(row) == {
         "match_id",

@@ -2,7 +2,17 @@
 
 from . import buildorders, combat, const, econ, efficiency, gaia, mistakes, population, rates, spatial
 from .classify import Candidate, ClassificationResult, classify
-from .coach import BENCHMARKS, CoachOutput, build_coach_prompt, coach, parse_opening, run_claude_coach
+from .coach import (
+    BENCHMARKS,
+    COACH_SYSTEM_V2,
+    CoachOutput,
+    build_coach_prompt,
+    build_coach_prompt_v2,
+    coach,
+    parse_opening,
+    run_agentic_coach,
+    run_claude_coach,
+)
 from .econ import (
     assignment_events,
     collected_estimate,
@@ -16,6 +26,7 @@ from .mistakes import detect_mistakes
 from .parser import ParsedRec, parse_rec
 from .reconstruct import Reconstruction, reconstruct
 from .timeline import build_timeline, render_dual_log, render_salient_log
+from .workspace import build_workspace
 
 __all__ = [
     "const",
@@ -38,10 +49,14 @@ __all__ = [
     "eco_split_steps",
     "estimate_economy",
     "BENCHMARKS",
+    "COACH_SYSTEM_V2",
     "CoachOutput",
     "build_coach_prompt",
+    "build_coach_prompt_v2",
+    "build_workspace",
     "coach",
     "parse_opening",
+    "run_agentic_coach",
     "run_claude_coach",
     "analyze_replay",
     "compute_metrics",
