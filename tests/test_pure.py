@@ -55,11 +55,14 @@ def test_render_dual_log_roles_and_format():
     log = render_dual_log(_ops(), me_number=1, opp_number=2, me_action_count=6)
     lines = log.splitlines()
     assert lines[0].startswith("# ME = you")
-    for ln in lines[1:]:
+    # Every event line (excluding the header and trailing APM line) is role- and tag-tagged.
+    for ln in lines[1:-1]:
         parts = ln.split(" ")
-        if parts[1] in {"ME", "OPP"}:
-            assert parts[1] in {"ME", "OPP"}
+        assert parts[1] in {"ME", "OPP"}
+        assert parts[2] in {"AGE_UP", "BUILD", "TECH", "TRAIN"}
+    assert "ME BUILD Archery Range" in log
     assert "OPP BUILD Stable" in log
+    assert "OPP TRAIN Scout Cavalry" in log  # first OPP military unit surfaces
     assert log.rstrip().endswith("APM total_actions=6")
 
 
