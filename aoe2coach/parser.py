@@ -24,6 +24,16 @@ class ParsedRec:
     opponent: dict | None
     my_result: str
     ops: list = field(default_factory=list)
+    # --- Additive fields for downstream sub-projects (#1 reconstruction, #2 economy). ---
+    # Map width/height in tiles (square), e.g. 120 on Arabia. None if unavailable.
+    map_dim: int | None = None
+    # Starting GAIA object table (header["players"][0]["objects"]): ~4,560 entries, each
+    # {class_id, object_id, instance_id, position, index}. #2 joins GATHER_POINT/ORDER target ids
+    # against this to classify a target as wood/food/gold/stone. Empty list if unavailable.
+    gaia_objects: list = field(default_factory=list)
+    # Per-player starting map position {"number": {"x","y"}} from the header (the player's start
+    # TC location). The opponent's start is the reference for spatial.eco_exposure / combat zones.
+    start_positions: dict = field(default_factory=dict)
 
 
 def _read_ops(f):
@@ -87,6 +97,27 @@ def parse_rec(path, owner_profile_id):
     map_id = header["de"].get("rms_map_id")
     map_name = mgz.const.DE_MAP_NAMES.get(map_id, f"#{map_id}") if map_id is not None else ""
 
+    # --- Additive: surface map size, starting GAIA objects, and per-player start positions. ---
+    map_dim = None
+    map_block = header.get("map")
+    if isinstance(map_block, dict):
+        dim = map_block.get("dimension")
+        if isinstance(dim, int):
+            map_dim = dim
+
+    gaia_objects = []
+    start_positions = {}
+    for p in header.get("players", []):
+        if not isinstance(p, dict):
+            continue
+        num = p.get("number")
+        # GAIA is player number 0 (civilization_id 96) and carries the starting object table.
+        if num == 0 and isinstance(p.get("objects"), list):
+            gaia_objects = p["objects"]
+        pos = p.get("position")
+        if isinstance(pos, dict) and "x" in pos and "y" in pos and num is not None:
+            start_positions[num] = {"x": pos["x"], "y": pos["y"]}
+
     my_result = "unknown"
     if is_1v1 and me and opponent:
         my_result = _result_from_ops(ops, me["number"], opponent["number"])
@@ -106,4 +137,7 @@ def parse_rec(path, owner_profile_id):
         opponent=opponent,
         my_result=my_result,
         ops=ops,
+        map_dim=map_dim,
+        gaia_objects=gaia_objects,
+        start_positions=start_positions,
     )
