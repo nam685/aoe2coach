@@ -18,13 +18,28 @@ def _fmt(ms):
 
 
 def build_timeline(ops, me_number):
-    """Build timeline for the owner player only. Used for metrics computation."""
+    """Build timeline for the owner player only. Used for metrics computation.
+
+    Returns a dict with (all ME-only, all EXACT, command-derived):
+      uptimes              age click times (ms) {feudal, castle, imperial}
+      builds               [{t, name, building_id, x, y}] in command order
+      eco_techs            [{t, name}] first-occurrence per eco tech name
+      mil_techs            [{t, name}] first-occurrence per military OR university tech (merged,
+                           in occurrence order) — matches the harness's "mil_techs" expectation.
+      military_techs       [{t, name}] military-only (Blacksmith/unit-line/siege) first-occurrence
+      university_techs     [{t, name}] university-only first-occurrence
+      units                [{t, name, unit_id, amount}] every DE_QUEUE in command order
+      villager_queue_times [t, ...] ms of each villager DE_QUEUE (cadence/idle source)
+      action_count         total ME actions (raw count; APM is recomputed in efficiency.py)
+    """
     uptimes = {"feudal": None, "castle": None, "imperial": None}
     age_key = {101: "feudal", 102: "castle", 103: "imperial"}
-    builds, eco_techs, units, vill_times = [], [], [], []
+    builds, eco_techs, military_techs, university_techs, units, vill_times = [], [], [], [], [], []
     action_count = 0
-    # Dedupe eco techs: only the FIRST occurrence of each tech name is kept.
+    # Dedupe each tech axis: only the FIRST occurrence of each tech name is kept.
     seen_eco_techs: set[str] = set()
+    seen_mil_techs: set[str] = set()
+    seen_univ_techs: set[str] = set()
 
     for t, action_type, data in ops:
         if data.get("player_id") != me_number:
@@ -39,19 +54,43 @@ def build_timeline(ops, me_number):
                 if name not in seen_eco_techs:
                     seen_eco_techs.add(name)
                     eco_techs.append({"t": t, "name": name})
+            elif tech in const.MILITARY_TECHS:
+                name = const.MILITARY_TECHS[tech]
+                if name not in seen_mil_techs:
+                    seen_mil_techs.add(name)
+                    military_techs.append({"t": t, "name": name})
+            elif tech in const.UNIVERSITY_TECHS:
+                name = const.UNIVERSITY_TECHS[tech]
+                if name not in seen_univ_techs:
+                    seen_univ_techs.add(name)
+                    university_techs.append({"t": t, "name": name})
         elif action_type == Action.BUILD:
-            builds.append({"t": t, "name": const.building_name(data.get("building_id"))})
+            builds.append(
+                {
+                    "t": t,
+                    "name": const.building_name(data.get("building_id")),
+                    "building_id": data.get("building_id"),
+                    "x": data.get("x"),
+                    "y": data.get("y"),
+                }
+            )
         elif action_type == Action.DE_QUEUE:
             uid = data.get("unit_id")
             amount = int(data.get("amount", 1))
-            units.append({"t": t, "name": const.unit_name(uid), "amount": amount})
+            units.append({"t": t, "name": const.unit_name(uid), "unit_id": uid, "amount": amount})
             if uid == const.VILLAGER_ID:
                 vill_times.append(t)
+
+    # "mil_techs": military + university merged in occurrence order (harness contract).
+    mil_techs = sorted(military_techs + university_techs, key=lambda m: m["t"])
 
     return {
         "uptimes": uptimes,
         "builds": builds,
         "eco_techs": eco_techs,
+        "mil_techs": mil_techs,
+        "military_techs": military_techs,
+        "university_techs": university_techs,
         "units": units,
         "villager_queue_times": vill_times,
         "action_count": action_count,

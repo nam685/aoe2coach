@@ -385,6 +385,136 @@ UNIT_NAMES = {
 }
 
 
+# Blacksmith / military upgrades + unit-line upgrades we surface timing for (tech_id -> name).
+# Ids are best-effort from aoe2techtree community data; validated against the calibration rec.
+# Unknown ids fall through to "#<id>" via tech_name(), so a wrong/missing id never crashes.
+MILITARY_TECHS = {
+    # --- Blacksmith: ranged attack/range ---
+    199: "Fletching",
+    200: "Bodkin Arrow",
+    201: "Bracer",
+    # --- Blacksmith: infantry/cavalry melee attack ---
+    67: "Forging",
+    68: "Iron Casting",
+    75: "Blast Furnace",
+    # --- Blacksmith: archer armor ---
+    211: "Padded Archer Armor",
+    212: "Leather Archer Armor",
+    219: "Ring Archer Armor",
+    # --- Blacksmith: infantry armor ---
+    74: "Scale Mail Armor",
+    76: "Chain Mail Armor",
+    77: "Plate Mail Armor",
+    # --- Blacksmith: cavalry armor ---
+    81: "Scale Barding Armor",
+    82: "Chain Barding Armor",
+    80: "Plate Barding Armor",
+    # --- Stable line upgrades ---
+    435: "Bloodlines",
+    # NOTE: Husbandry (id 39) lives in ECO_TECHS only, to keep the eco/military APM split
+    # unambiguous (a tech is classified by which single map it appears in).
+    # --- Barracks unit-line upgrades ---
+    222: "Man-at-Arms",
+    207: "Long Swordsman",
+    217: "Two-Handed Swordsman",
+    264: "Champion",
+    197: "Pikeman",
+    429: "Halberdier",
+    254: "Eagle Warrior",
+    384: "Elite Eagle Warrior",
+    315: "Squires",
+    716: "Arson",
+    # --- Archery Range unit-line upgrades ---
+    98: "Crossbowman",
+    100: "Arbalester",
+    218: "Elite Skirmisher",
+    715: "Imperial Skirmisher",
+    209: "Heavy Cavalry Archer",
+    231: "Thumb Ring",
+    437: "Parthian Tactics",
+    # --- Stable unit-line upgrades ---
+    420: "Light Cavalry",
+    428: "Hussar",
+    265: "Cavalier",
+    241: "Heavy Camel Rider",
+    # --- Siege Workshop ---
+    255: "Capped Ram",
+    257: "Onager",
+    320: "Siege Ram",
+    321: "Siege Onager",
+    322: "Heavy Scorpion",
+    # --- Castle / unique-ish ---
+    408: "Hoardings",
+    63: "Conscription",
+}
+
+# University techs (tech_id -> name).
+UNIVERSITY_TECHS = {
+    93: "Ballistics",
+    47: "Masonry",
+    50: "Fortified Wall",
+    140: "Guard Tower",
+    51: "Keep",
+    64: "Murder Holes",
+    194: "Architecture",
+    377: "Treadmill Crane",
+    380: "Heated Shot",
+    379: "Chemistry",
+    607: "Bombard Tower",
+    608: "Siege Engineers",
+}
+
+# Siege unit ids (subset of UNIT_NAMES that are siege weapons). Used for first-siege/first-treb
+# milestones and the military/eco APM split.
+SIEGE_UNIT_IDS = {
+    279,  # Scorpion
+    280,  # Mangonel
+    542,  # Heavy Scorpion
+    550,  # Onager
+    588,  # Siege Onager
+    36,  # Bombard Cannon
+    420,  # Cannon Galleon (siege-class)
+    422,  # Capped Ram
+    548,  # Siege Ram
+    1258,  # Battering Ram
+    440,  # Petard
+    1105,  # Siege Tower
+    42,  # Trebuchet (civ-specific / unpacked)
+    331,  # Trebuchet (packed, PTREB)
+}
+
+# Trebuchet unit ids (subset of SIEGE_UNIT_IDS) — for the first-treb milestone.
+TREBUCHET_UNIT_IDS = {42, 331}
+
+# Population provided by each building (building name -> pop slots). Used by population.py to
+# bound the *produced* pop ceiling. Pop housing only; production-only buildings provide 0.
+POP_PER_BUILDING = {
+    "House": 5,
+    "Town Center": 5,
+    "Castle": 20,
+}
+
+# AoE2 hard population cap (standard ranked games).
+POP_CAP = 200
+
+
+def tech_name(tech_id):
+    """Resolve a technology_id to a name across all tech maps; "#<id>" if unknown.
+
+    Search order: age -> military -> university -> eco. Order only matters if an id collides
+    across maps (none known to); first hit wins.
+    """
+    if tech_id in AGE_TECHS:
+        return AGE_TECHS[tech_id]
+    if tech_id in MILITARY_TECHS:
+        return MILITARY_TECHS[tech_id]
+    if tech_id in UNIVERSITY_TECHS:
+        return UNIVERSITY_TECHS[tech_id]
+    if tech_id in ECO_TECHS:
+        return ECO_TECHS[tech_id]
+    return f"#{tech_id}"
+
+
 def civ_name(civ_id):
     return CIV_NAMES.get(civ_id, f"#{civ_id}")
 
