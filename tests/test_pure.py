@@ -3,9 +3,8 @@ from unittest.mock import MagicMock, patch
 
 from mgz.fast import Action
 
-from aoe2coach import coach as coach_mod
 from aoe2coach import const
-from aoe2coach.coach import BENCHMARKS, CoachOutput, build_coach_prompt, coach, parse_opening
+from aoe2coach.coach import BENCHMARKS, COACH_SYSTEM, CoachOutput, build_coach_prompt, coach, parse_opening
 from aoe2coach.metrics import compute_metrics
 from aoe2coach.timeline import build_timeline, render_dual_log
 
@@ -67,7 +66,7 @@ def test_render_dual_log_roles_and_format():
 def test_benchmarks_sliced_verbatim():
     # The 6 benchmark rows must be present and the slice must be a substring of COACH_SYSTEM.
     assert BENCHMARKS.startswith("AoE2 1v1 benchmark uptimes")
-    assert BENCHMARKS in coach_mod.COACH_SYSTEM
+    assert BENCHMARKS in COACH_SYSTEM
     for row in ["Scouts opening", "Archers opening", "Drush", "Fast Castle", "Tower Rush"]:
         assert row in BENCHMARKS
     assert "Key metrics" not in BENCHMARKS  # end anchor excluded
@@ -84,7 +83,7 @@ def test_build_coach_prompt_structure_unchanged():
         "eco_tech_timings": [{"name": "Double-Bit Axe", "t_s": 610}],
     }
     p = build_coach_prompt("00:00 APM total_actions=6", metrics)
-    assert p.startswith(coach_mod.COACH_SYSTEM)
+    assert p.startswith(COACH_SYSTEM)
     assert "=== METRICS SUMMARY ===" in p
     assert "=== SALIENT LOG ===" in p
     assert p.rstrip().endswith("Now write the coach report.")
@@ -109,3 +108,55 @@ def test_coach_mocks_subprocess_and_extracts_fields():
     # subprocess invoked with the exact CLI contract
     args = run.call_args.args[0]
     assert args[:2] == ["claude", "-p"] and "--output-format" in args and "json" in args
+
+
+def test_analyze_replay_data_contract():
+    import aoe2coach.entrypoint as ep
+
+    fake_rec = MagicMock()
+    fake_rec.ops = []
+    fake_rec.duration_ms = 900_000
+    fake_rec.me = {"number": 1, "civ_name": "Franks", "profile_id": 42}
+    fake_rec.opponent = {"number": 2, "civ_name": "Mayans"}
+    fake_rec.my_result = "win"
+
+    with (
+        patch.object(ep, "parse_rec", return_value=fake_rec),
+        patch.object(
+            ep,
+            "build_timeline",
+            return_value={
+                "uptimes": {"feudal": None, "castle": None, "imperial": None},
+                "units": [],
+                "eco_techs": [],
+                "action_count": 0,
+            },
+        ),
+        patch.object(ep, "compute_metrics", return_value={"apm": 50, "army": [], "eco_tech_timings": []}),
+        patch.object(ep, "render_dual_log", return_value="# ME = you\n00:00 APM total_actions=0"),
+        patch.object(
+            ep,
+            "coach",
+            return_value=CoachOutput(
+                raw_text="OPENING: Scouts\n\nx", opening_tag="Scouts", model_used="claude-sonnet-4-5"
+            ),
+        ),
+    ):
+        row = ep.analyze_replay("/fake.aoe2record", 42, elo_band="mid")
+
+    assert set(row) == {
+        "match_id",
+        "metrics_json",
+        "salient_log",
+        "game_result",
+        "coach_output",
+        "opening",
+        "civ",
+        "elo_band",
+    }
+    assert row["game_result"] == "win"
+    assert row["opening"] == "Scouts"
+    assert row["civ"] == "Franks"
+    assert row["elo_band"] == "mid"
+    assert json.loads(row["metrics_json"])["apm"] == 50
+    assert all(isinstance(v, str) for v in row.values())
