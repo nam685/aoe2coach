@@ -310,6 +310,68 @@ def worker_split_at_ages(focus_events, pop_times_s, starting, ages, fishing_ops=
     return out
 
 
+def worker_split_series(focus_events, pop_times_s, starting, fishing_ops=None, player=None, farm_times_s=None):
+    """Continuous worker-on-resource split at EVERY villager count from `starting` to the max popped.
+
+    Identical farm-anchored model to worker_split_at_ages, but emits ONE snapshot per villager POP
+    (indexed by villager count) rather than only at the three age boundaries — the data behind the
+    villager-count-indexed economy graph. The gather-intent accumulator `acc` grows exactly as in the
+    age model, so a point read at an age-arrival villager count matches that age's per_age snapshot.
+
+    Each point: {vils, t_s, alloc:{resource: count}, active_farms, fishing}. `t_s` is the pop time at
+    which that villager count was reached (the `starting` count is emitted at t_s=0). `active_farms` is
+    the farm-count floor at t_s (drawn in-graph instead of a standalone seeded-total that contradicts
+    the food count). `alloc` sums to workers-present (= vils + fishing); fishing folds into food.
+    """
+    pts = sorted(p for p in pop_times_s)
+    acc = Counter()
+    acc["food"] += starting  # pre-placed villagers start on food (sheep/berries)
+    series = []
+
+    def _point(vils, t):
+        t = int(t)
+        fishing = (
+            fishing_food_workers(fishing_ops, player, at_s=t) if (fishing_ops is not None and player is not None) else 0
+        )
+        present = vils + fishing
+        farm_floor = farms_by(farm_times_s, t) if farm_times_s else 0
+        counts, _food = _farm_anchored_split(acc, present, farm_floor, fishing)
+        return {
+            "vils": vils,
+            "t_s": t,
+            "alloc": {r: round(counts[r], 2) for r in _RESOURCES if counts[r] > 0},
+            "active_farms": farm_floor,
+            "fishing": fishing,
+        }
+
+    series.append(_point(starting, 0))
+    for i, pt in enumerate(pts):
+        wd = _focus_window_dist(focus_events, int(pt))
+        tot = sum(wd.values())
+        if tot:
+            for r, n in wd.items():
+                acc[r] += n / tot
+        series.append(_point(starting + i + 1, pt))
+    return series
+
+
+def resource_balance_series(ops, player, pop_times_s, starting):
+    """Cumulative near-exact SPEND per resource at each villager-count checkpoint (start→max popped).
+
+    Shares the villager-count x-axis with worker_split_series so the two economy graphs stack visually.
+    At each checkpoint (vils, t_s) the value is the cumulative spend (BUILD+train+research costs) up to
+    t_s — monotonic, honest, log-scalable. Collected/bank totals stay suppressed (never fabricated).
+
+    Each point: {vils, t_s, spent:{resource: amount}}.
+    """
+    pts = sorted(pop_times_s)
+    checkpoints = [(starting, 0)] + [(starting + i + 1, int(pt)) for i, pt in enumerate(pts)]
+    series = []
+    for vils, t in checkpoints:
+        series.append({"vils": vils, "t_s": t, "spent": spend.spent_by_resource(ops, player, end_s=t)})
+    return series
+
+
 def _integrate_collected(focus_events, pop_times_s, starting, recon):
     """Estimate resources collected by integrating Σ workers_on_R(t) × rate_at(R, t) over the game.
 
@@ -566,6 +628,9 @@ def estimate_economy(ops, player, gaia_list, recon):
         "tier": "estimate",
         "estimate": True,
         "per_age": split,
+        "series": worker_split_series(
+            focus, sim.pop_times_s, starting, fishing_ops=ops, player=player, farm_times_s=farm_times
+        ),
         "mid_game_share": {r: round(s, 3) for r, s in mg_worker_share.items()},
         "n_gather_focus_events": len(focus),
         "gather_focus_by_resource": dict(focus_by_res),
@@ -588,6 +653,7 @@ def estimate_economy(ops, player, gaia_list, recon):
         "estimate": True,
         "spent_by_resource": spent,
         "spend_share": {r: round(spend_sh.get(r, 0.0), 3) for r in _RESOURCES} if spend_sh else {},
+        "series": resource_balance_series(ops, player, sim.pop_times_s, starting),
         "floating": floating,
         "collected": None,  # gathered/bank totals are NOT fabricated — suppressed by design
         "relic_gold": "unavailable",

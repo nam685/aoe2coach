@@ -280,6 +280,50 @@ def test_worker_split_early_game_keeps_gather_food_when_no_farms():
     assert feud["shares"]["food"] > 0.4
 
 
+# ------------------------------------------------------------------- continuous series (graph data)
+def test_worker_split_series_one_point_per_villager_count():
+    """Continuous series: starting count first (all food), then one point per villager popped,
+    villager count strictly increasing, alloc summing to workers-present."""
+    focus = [{"t_s": 30, "resource": "food"}, {"t_s": 90, "resource": "wood"}]
+    pop_times = [25 * i for i in range(1, 6)]  # 5 pops
+    series = econ.worker_split_series(focus, pop_times, starting=3)
+    assert len(series) == 1 + 5  # starting point + one per pop
+    assert series[0]["vils"] == 3 and series[0]["t_s"] == 0
+    assert series[0]["alloc"] == {"food": 3.0}  # pre-placed villagers seed food
+    assert [p["vils"] for p in series] == [3, 4, 5, 6, 7, 8]  # strictly increasing
+    for p in series:
+        assert abs(sum(p["alloc"].values()) - p["vils"]) < 0.05  # land map: alloc sums to vils
+
+
+def test_worker_split_series_food_overridden_by_farms_when_exceeding():
+    """Per the owner: when (reseed-excluded) active farms exceed gather-intent food, FOOD is overridden
+    to the farm count, and `active_farms` rides along as the food floor drawn in-graph."""
+    focus = [{"t_s": t, "resource": "wood"} for t in range(30, 2000, 60)]  # heavy wood intent, ~no food
+    pop_times = [25 * i for i in range(1, 60)]
+    farm_times = [50 + 30 * i for i in range(30)]  # 30 distinct farms built by ~950s
+    series = econ.worker_split_series(focus, pop_times, starting=3, farm_times_s=farm_times)
+    late = series[-1]
+    # food was overridden up to the active-farm count (gather intent was nearly all wood).
+    assert late["active_farms"] == 30
+    assert late["alloc"]["food"] >= 30
+    # the food line equals the farm floor here (farms drive food), reconciling the old contradiction.
+    assert late["alloc"]["food"] == late["active_farms"]
+
+
+def test_resource_balance_series_is_monotonic_cumulative_spend():
+    """Cumulative spend per resource at each villager-count checkpoint — non-decreasing, and the last
+    point equals the whole-game spent_by_resource total (it shares the time axis via t_s)."""
+    ops = [(i * 25_000, Action.DE_QUEUE, {"player_id": 1, "unit_id": 83, "amount": 1}) for i in range(1, 11)]
+    pop_times = [25 * i for i in range(1, 11)]
+    series = econ.resource_balance_series(ops, player=1, pop_times_s=pop_times, starting=3)
+    assert series[0]["vils"] == 3 and series[0]["t_s"] == 0
+    assert all("t_s" in p for p in series)  # carries the real-time axis
+    food = [p["spent"].get("food", 0) for p in series]
+    assert food == sorted(food)  # cumulative spend never decreases
+    total = econ.spend.spent_by_resource(ops, 1)
+    assert series[-1]["spent"] == total
+
+
 # ------------------------------------------------------------------- collected_estimate (band/labels)
 def test_collected_estimate_carries_band_and_labels():
     out = econ.collected_estimate({"food": 20, "wood": 18, "gold": 6, "stone": 2})
