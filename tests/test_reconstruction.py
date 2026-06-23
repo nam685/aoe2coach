@@ -428,3 +428,18 @@ def test_reconstruct_second_rec_sane():
     if r["spatial"]["me"]["base_centroid"]:
         mc = r["spatial"]["me"]["base_centroid"]
         assert 0 <= mc["x"] <= 200 and 0 <= mc["y"] <= 200
+
+
+def test_civ_names_de_ids_including_post_gurjaras():
+    """Regression: DE civilization_id map must cover the newer civs (43+), not fall back to #id.
+    Anchors verified against real recs + aoc-reference-data."""
+    assert const.civ_name(8) == "Persians"
+    assert const.civ_name(21) == "Incas"
+    assert const.civ_name(31) == "Vietnamese"
+    assert const.civ_name(36) == "Burgundians"
+    assert const.civ_name(41) == "Bengalis"
+    assert const.civ_name(43) == "Romans"
+    assert const.civ_name(44) == "Armenians"
+    assert const.civ_name(45) == "Georgians"
+    assert const.civ_name(52) == "Jurchens"
+    assert const.civ_name(999) == "#999"  # unknown still falls back

@@ -74,9 +74,25 @@ CIV_NAMES = {
     40: "Dravidians",
     41: "Bengalis",
     42: "Gurjaras",
-    # 43-45 in DE are Random/Mirror/Full Random (never a resolved game civ).
-    # Newer civs (Romans/Armenians/Georgians/Three Kingdoms) use ids >=46 and are not yet
-    # mapped — civ_name() falls back to "#<id>" for them.
+    # Post-Gurjaras civs append in DLC release order (verified vs aoc-reference-data dataset 100
+    # and against real recs). 43+ ARE real game civs, NOT Random sentinels.
+    43: "Romans",  # Return of Rome
+    44: "Armenians",  # The Mountain Royals
+    45: "Georgians",
+    46: "Achaemenids",  # Chronicles: Battle for Greece (separate mode, mapped for completeness)
+    47: "Athenians",
+    48: "Spartans",
+    49: "Shu",  # The Three Kingdoms
+    50: "Wu",
+    51: "Wei",
+    52: "Jurchens",
+    53: "Khitans",
+    54: "Macedonians",
+    55: "Thracians",
+    56: "Puru",
+    57: "Muisca",
+    58: "Mapuche",
+    59: "Tupi",
 }
 
 # Common buildings (building_id -> name).
