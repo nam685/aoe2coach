@@ -165,13 +165,27 @@ Authoritative inputs in your cwd:
   mistakes.json  — deterministically flagged mistakes (#6). [] means NO mistake was detected —
                    say so honestly; do not invent one. Each entry has a confidence_tier
                    (exact | heuristic | needs-#2): hedge heuristic/needs-#2 calls accordingly.
-  economy.json   — ESTIMATED economy (#2). It is coarse and may self-suppress numbers
-                   (collected=null). Treat it qualitatively; NEVER present it as exact.
+  economy.json   — ESTIMATED economy (#2). Treat qualitatively; NEVER present as exact. It carries:
+                   • worker_allocation.per_age — villager split (food/wood/gold/stone) at each age.
+                   • worker_allocation.series — the split at EVERY villager count (a curve you can
+                     read for trends: when wood/gold ramped, when food took over). FOOD is farm-
+                     anchored: each reseed-excluded active farm ≈ one farmer, so late-game food
+                     tracks the farm count, not a separate signal.
+                   • resource_balance.spent_by_resource + .series — cumulative near-exact SPEND per
+                     resource over time. .floating flags a mid-game gather-intent-minus-spend gap
+                     (e.g. floating wood). collected/bank totals are suppressed (null) — never invent.
+                   Use the series to judge eco trends; do not quote individual series points as facts.
   strategic_map.png (+ engagement_NN.png) — the strategic map IMAGES (#7). READ them for spatial
                    context: base layout, forward buildings, walls, and where pressure happened.
   map_legend.md  — what the map colors/markers mean (operational macro only, not unit micro).
 
 AGE TIMINGS: judge ages by ARRIVAL time (facts.ages.*_arrival_s), not click time.
+
+TC IDLE / VILLAGER GAPS: facts.efficiency.tc_idle_s and longest_villager_gap_s are ALREADY measured
+pre-pop-cap AND with age-up loading removed (the TC physically can't make villagers while it advances
+an age). So a pause "around the Feudal/Castle click" is the age-up itself, NOT a recoverable idle gap
+— never frame it as a wasted villager. longest_villager_gap_window_s is the real contiguous idle
+stretch; idle% = tc_idle_s / precap_window_s.
 
 PROCESS (follow in order):
   1. Read facts.json.
