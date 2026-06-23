@@ -287,8 +287,10 @@ def test_tc_idle_only_counts_before_precap_cutoff():
     # cutoff at 25s (the moment after the 2nd queue): the big late gap starts AT the cap -> 0 idle.
     idle2 = efficiency.tc_idle(ops, player=1, precap_s=25)
     assert idle2["tc_idle_s"] == 0
-    # whole-game longest gap / windows are still reported for context.
-    assert idle["longest_villager_gap_s"] == 275
+    # Longest gap is PRE-CAP only now (Nam): the 25->300 gap is clipped to the 100s cutoff -> 75s,
+    # not the post-cap 275s. Its window ends at the cutoff.
+    assert idle["longest_villager_gap_s"] == 75
+    assert idle["longest_villager_gap_window_s"] == [25, 100]
 
 
 def test_precap_cutoff_reaches_200_pop():

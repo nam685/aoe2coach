@@ -127,19 +127,27 @@ def tc_idle(ops, player, threshold_s=IDLE_GAP_THRESHOLD_S, precap_s=None, age_wi
     )
     # gaps[k] is the gap between villager queue k and k+1 (i.e. between times[k] and times[k+1]).
     gaps = [(times[i] - times[i - 1]) // 1000 for i in range(1, len(times))]
-    longest = max(gaps) if gaps else 0
-    longest_window = None
-    idle_windows = []
-    if gaps:
-        j = max(range(len(gaps)), key=lambda k: gaps[k])  # index of the longest gap
-        longest_window = [times[j] // 1000, times[j + 1] // 1000]
-        idle_windows = [[times[k] // 1000, times[k + 1] // 1000] for k, g in enumerate(gaps) if g > threshold_s]
-
-    # Pre-cap idle: clip each gap to [0, precap_s] before measuring its over-threshold idle, so
-    # late-game (post-200-pop) TC quiet is excluded and a straddling gap is counted only up to cutoff.
     if precap_s is None:
         precap_s = times[-1] // 1000 if times else 0
     age_windows = age_windows or []
+
+    # Longest gap + idle windows are measured ONLY within the pre-cap window (Nam): a gap after the
+    # player stopped making villagers (~200 pop) is intentional, not a mistake. A gap counts if it
+    # STARTS before the cap, and only its portion up to the cutoff is taken.
+    longest = 0
+    longest_window = None
+    idle_windows = []
+    for k, _g in enumerate(gaps):
+        start_s = times[k] // 1000
+        if start_s >= precap_s:
+            continue  # gap starts after the player stopped wanting villagers — not idle
+        end_s = min(times[k + 1] // 1000, precap_s)
+        capped = end_s - start_s
+        if capped > longest:
+            longest = capped
+            longest_window = [start_s, end_s]
+        if capped > threshold_s:
+            idle_windows.append([start_s, end_s])
     idle = 0
     for k in range(1, len(times)):
         start_s = times[k - 1] // 1000
