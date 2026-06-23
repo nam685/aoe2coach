@@ -197,12 +197,20 @@ def reconstruct(rec):
     eff = (
         efficiency.tc_idle(ops, me_num)
         if me_num is not None
-        else {"tc_idle_s": 0, "longest_villager_gap_s": 0, "villager_gaps_s": []}
+        else {
+            "tc_idle_s": 0,
+            "longest_villager_gap_s": 0,
+            "longest_villager_gap_window_s": None,
+            "idle_gap_windows_s": [],
+            "villager_gaps_s": [],
+        }
     )
     apm = efficiency.apm_split(ops, me_num, duration_ms) if me_num is not None else {}
     efficiency_block = {
         "tc_idle_s": eff["tc_idle_s"],
         "longest_villager_gap_s": eff["longest_villager_gap_s"],
+        "longest_villager_gap_window_s": eff.get("longest_villager_gap_window_s"),
+        "idle_gap_windows_s": eff.get("idle_gap_windows_s", []),
         "villager_gaps_s": eff["villager_gaps_s"],
         "apm_total": apm.get("apm_total"),
         "apm_eco": apm.get("apm_eco"),

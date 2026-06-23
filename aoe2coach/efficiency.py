@@ -49,21 +49,37 @@ def tc_idle(ops, player, threshold_s=IDLE_GAP_THRESHOLD_S):
     Returns:
       {"tc_idle_s": total idle seconds (sum of gaps over threshold),
        "longest_villager_gap_s": longest single gap (0 if <2 villagers),
+       "longest_villager_gap_window_s": [start_s, end_s] of that gap (None if <2 villagers),
+       "idle_gap_windows_s": [[start_s, end_s], ...] for every gap OVER threshold (when idle happened),
        "villager_gaps_s": [each gap in seconds, in order]}
 
     A "gap" is the time between two consecutive villager queues; only the portion of gaps EXCEEDING
     a normal train time is idle, so we count gap-minus-threshold summed over gaps > threshold. This
     is an exact, command-derived idle signal (matches CaptureAge's IDL-TC intent), not an estimate.
+    Gap WINDOWS are exposed so the coach can say WHEN the idle was, not guess.
     """
     times = sorted(
         t
         for t, a, d in ops
         if a == Action.DE_QUEUE and d.get("player_id") == player and d.get("unit_id") == const.VILLAGER_ID
     )
+    # gaps[k] is the gap between villager queue k and k+1 (i.e. between times[k] and times[k+1]).
     gaps = [(times[i] - times[i - 1]) // 1000 for i in range(1, len(times))]
     idle = sum(max(0, g - threshold_s) for g in gaps)
     longest = max(gaps) if gaps else 0
-    return {"tc_idle_s": idle, "longest_villager_gap_s": longest, "villager_gaps_s": gaps}
+    longest_window = None
+    idle_windows = []
+    if gaps:
+        j = max(range(len(gaps)), key=lambda k: gaps[k])  # index of the longest gap
+        longest_window = [times[j] // 1000, times[j + 1] // 1000]
+        idle_windows = [[times[k] // 1000, times[k + 1] // 1000] for k, g in enumerate(gaps) if g > threshold_s]
+    return {
+        "tc_idle_s": idle,
+        "longest_villager_gap_s": longest,
+        "longest_villager_gap_window_s": longest_window,
+        "idle_gap_windows_s": idle_windows,
+        "villager_gaps_s": gaps,
+    }
 
 
 def _classify(action_type, data):

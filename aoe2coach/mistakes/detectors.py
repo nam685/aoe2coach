@@ -67,8 +67,16 @@ def long_vil_gap(recon, params):
     threshold = float(params.get("max_gap_s", 60))
     if gap <= threshold:
         return None
+    eff = recon.get("efficiency", {})
+    observed = {"longest_villager_gap_s": round(gap), "threshold_s": round(threshold)}
+    window = eff.get("longest_villager_gap_window_s")
+    if window:
+        observed["gap_window_s"] = window  # [start_s, end_s] — WHEN the gap was, so the coach needn't guess
+    idle_windows = eff.get("idle_gap_windows_s")
+    if idle_windows:
+        observed["idle_windows_s"] = idle_windows
     return Detection(
-        observed={"longest_villager_gap_s": round(gap), "threshold_s": round(threshold)},
+        observed=observed,
         magnitude=_clamp01((gap - threshold) / max(threshold, 1.0)),
     )
 
