@@ -95,7 +95,8 @@ def parse_rec(path, owner_profile_id):
     opponent = next((p for p in players if not p["is_me"]), None) if me else None
 
     map_id = header["de"].get("rms_map_id")
-    map_name = mgz.const.DE_MAP_NAMES.get(map_id, f"#{map_id}") if map_id is not None else ""
+    # const.MAP_NAMES is the full DE set (mgz ships only ~121, so newer maps were rendering "#id").
+    map_name = const.map_name(map_id) if map_id is not None else ""
 
     # --- Additive: surface map size, starting GAIA objects, and per-player start positions. ---
     map_dim = None
