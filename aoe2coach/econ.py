@@ -55,6 +55,7 @@ _DROPOFF_RESOURCE = {
     2556: "food",  # Settlement (TC-like)
 }
 _MINING_CAMP_ID = 584  # nearest gold/stone mine decides
+_CAMP_BUILDING_IDS = (562, 584)  # Lumber Camp / Mining Camp — drop-off camps = gather-intent on BUILD
 _FARM_BUILDING_ID = 50
 
 # Water FOOD workers: a Fishing Ship (Dock unit, id 13) gathers food from shore/deep fish, and a Fish
@@ -142,9 +143,22 @@ def gather_focus_events(ops, player, gaia_by_objid, resource_points):
     """
     out = []
     for t, action_type, data in ops:
-        if action_type != Action.GATHER_POINT or data.get("player_id") != player:
+        if data.get("player_id") != player:
             continue
-        r = resolve_gather_resource(data, gaia_by_objid, resource_points)
+        if action_type == Action.GATHER_POINT:
+            r = resolve_gather_resource(data, gaia_by_objid, resource_points)
+        elif action_type == Action.BUILD and data.get("building_id") in _CAMP_BUILDING_IDS:
+            # Building a resource drop-off camp IS a gather-intent signal toward that camp's resource:
+            # a Mining Camp → the nearest gold/stone, a Lumber Camp → wood. This captures villagers
+            # PULLED off their current resource to go build/mine elsewhere — a move that emits no
+            # GATHER_POINT, so the old model wrongly kept them on the stale (often wood) signal.
+            r = resolve_gather_resource(
+                {"target_type": data.get("building_id"), "x": data.get("x"), "y": data.get("y")},
+                gaia_by_objid,
+                resource_points,
+            )
+        else:
+            continue
         if r is None:
             continue
         out.append({"t_s": t // 1000, "resource": r})

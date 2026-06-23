@@ -215,6 +215,24 @@ def test_gather_focus_events_resolve_and_classify():
     assert [(e["t_s"], e["resource"]) for e in evs] == [(10, "wood"), (20, "gold"), (30, "wood")]
 
 
+def test_gather_focus_events_count_camp_builds_as_intent():
+    """Building a drop-off camp is a gather-intent signal: a Mining Camp near the gold mine → gold
+    (catching villagers pulled off wood to go mine), a Lumber Camp near trees → wood. Opponent's
+    builds are ignored."""
+    from mgz.fast import Action
+
+    res = gaia.resource_points(_gaia_objs())
+    by_objid = gaia.by_object_id(_gaia_objs())
+    ops = [
+        (10_000, Action.BUILD, {"player_id": 1, "building_id": 584, "x": 55.0, "y": 55.0}),  # Mining Camp → gold
+        (20_000, Action.BUILD, {"player_id": 1, "building_id": 562, "x": 50.0, "y": 50.0}),  # Lumber Camp → wood
+        (30_000, Action.BUILD, {"player_id": 1, "building_id": 70, "x": 55.0, "y": 55.0}),  # House → no gather intent
+        (40_000, Action.BUILD, {"player_id": 2, "building_id": 584, "x": 55.0, "y": 55.0}),  # opponent → ignored
+    ]
+    evs = econ.gather_focus_events(ops, player=1, gaia_by_objid=by_objid, resource_points=res)
+    assert [(e["t_s"], e["resource"]) for e in evs] == [(10, "gold"), (20, "wood")]
+
+
 # ------------------------------------------------------------------- worker_split_at_ages
 def test_worker_split_shows_meaningful_wood_not_all_food():
     # Synthetic: villagers pop steadily; gather focus alternates wood/food before feudal.
