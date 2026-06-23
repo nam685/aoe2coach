@@ -19,7 +19,9 @@ from .econ import (
     estimate_economy,
     gather_focus_events,
     resolve_gather_resource,
+    resource_balance_series,
     worker_split_at_ages,
+    worker_split_series,
 )
 from .entrypoint import analyze_replay
 from .metrics import compute_metrics, first_military_building, production_milestones
