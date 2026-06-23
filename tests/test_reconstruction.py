@@ -4,6 +4,7 @@ population, combat/engagements, efficiency, and the reconstruct() assembler.
 Synthetic ops are (t_ms, Action, data) tuples faithful to mgz.fast.parse_action shapes.
 """
 
+import json
 import os
 import struct
 
@@ -11,6 +12,15 @@ import pytest
 from mgz.fast import Action, parse_action
 
 from aoe2coach import const
+
+_FIXTURE = os.path.join(os.path.dirname(__file__), "fixtures", "aoc_reference_technologies_100.json")
+
+
+def _authoritative_techs():
+    """The technologies map from aoc-reference-data dataset 100 (DE dat tech ids -> name)."""
+    with open(_FIXTURE) as fh:
+        return {int(k): v for k, v in json.load(fh)["technologies"].items()}
+
 
 REC_PATH = "/home/namle685/projects/aoe2coach-analysis/game.aoe2record"
 REC2_PATH = "/home/namle685/projects/aoe2coach-analysis/game2.aoe2record"
@@ -30,6 +40,39 @@ def test_military_and_university_tech_maps():
     assert const.tech_name(93) == "Ballistics"
     assert const.tech_name(22) == "Loom"  # falls through to ECO_TECHS
     assert const.tech_name(999999) == "#999999"
+
+
+def test_every_tech_id_matches_authoritative_dataset():
+    """ZERO-mismatch audit: every id in MILITARY/UNIVERSITY/ECO must equal the aoc-reference name."""
+    auth = _authoritative_techs()
+    mismatches = []
+    for label, mapping in (
+        ("MILITARY", const.MILITARY_TECHS),
+        ("UNIVERSITY", const.UNIVERSITY_TECHS),
+        ("ECO", const.ECO_TECHS),
+    ):
+        for tid, name in mapping.items():
+            if auth.get(tid) != name:
+                mismatches.append(f"{label} {tid}: ours={name!r} authoritative={auth.get(tid)!r}")
+    assert mismatches == []
+
+
+def test_known_correct_tech_pairs():
+    """Hardcoded ground-truth ids that the old hand-built maps got wrong."""
+    assert const.tech_name(254) == "Light Cavalry"
+    assert const.tech_name(265) == "Paladin"
+    assert const.tech_name(384) == "Eagle Warrior"
+    assert const.tech_name(434) == "Elite Eagle Warrior"
+    assert const.tech_name(47) == "Chemistry"
+    assert const.tech_name(50) == "Masonry"
+    assert const.tech_name(100) == "Crossbowman"
+    assert const.tech_name(237) == "Arbalester"
+    assert const.tech_name(199) == "Fletching"
+    assert const.tech_name(209) == "Cavalier"
+    assert const.tech_name(408) == "Spies/Treason"
+    # ids the old map mislabeled as Eagle Warrior / Masonry must NOT resolve that way anymore
+    assert const.MILITARY_TECHS[254] == "Light Cavalry"
+    assert const.UNIVERSITY_TECHS[47] == "Chemistry"
 
 
 def test_siege_unit_ids():

@@ -416,6 +416,10 @@ UNIT_NAMES = {
 # Blacksmith / military upgrades + unit-line upgrades we surface timing for (tech_id -> name).
 # Ids are best-effort from aoe2techtree community data; validated against the calibration rec.
 # Unknown ids fall through to "#<id>" via tech_name(), so a wrong/missing id never crashes.
+#
+# IDs verified against aoc-reference-data dataset 100 `technologies` map (the DE dat tech ids,
+# matching recs' RESEARCH technology_id). See tests/fixtures/aoc_reference_technologies_100.json
+# and test_every_tech_id_matches_authoritative_dataset for the zero-mismatch audit.
 MILITARY_TECHS = {
     # --- Blacksmith: ranged attack/range ---
     199: "Fletching",
@@ -448,48 +452,53 @@ MILITARY_TECHS = {
     264: "Champion",
     197: "Pikeman",
     429: "Halberdier",
-    254: "Eagle Warrior",
-    384: "Elite Eagle Warrior",
-    315: "Squires",
-    716: "Arson",
+    384: "Eagle Warrior",
+    434: "Elite Eagle Warrior",
+    215: "Squires",
+    602: "Arson",
+    716: "Supplies",
+    90: "Tracking",
     # --- Archery Range unit-line upgrades ---
-    98: "Crossbowman",
-    100: "Arbalester",
-    218: "Elite Skirmisher",
-    715: "Imperial Skirmisher",
-    209: "Heavy Cavalry Archer",
-    231: "Thumb Ring",
-    437: "Parthian Tactics",
+    100: "Crossbowman",
+    237: "Arbalester",
+    98: "Elite Skirmisher",
+    655: "Imperial Skirmisher",
+    218: "Heavy Cavalry Archer",
+    437: "Thumb Ring",
+    436: "Parthian Tactics",
     # --- Stable unit-line upgrades ---
-    420: "Light Cavalry",
+    254: "Light Cavalry",
     428: "Hussar",
-    265: "Cavalier",
-    241: "Heavy Camel Rider",
+    209: "Cavalier",
+    265: "Paladin",
+    236: "Heavy Camel Rider",
+    715: "Elite Steppe Lancer",
     # --- Siege Workshop ---
-    255: "Capped Ram",
+    96: "Capped Ram",
+    255: "Siege Ram",
     257: "Onager",
-    320: "Siege Ram",
-    321: "Siege Onager",
-    322: "Heavy Scorpion",
+    320: "Siege Onager",
+    239: "Heavy Scorpion",
     # --- Castle / unique-ish ---
-    408: "Hoardings",
-    63: "Conscription",
+    315: "Conscription",
+    408: "Spies/Treason",
 }
 
-# University techs (tech_id -> name).
+# University techs (tech_id -> name). IDs verified against aoc-reference-data dataset 100.
 UNIVERSITY_TECHS = {
+    50: "Masonry",
+    51: "Architecture",
+    194: "Fortified Wall",
     93: "Ballistics",
-    47: "Masonry",
-    50: "Fortified Wall",
-    140: "Guard Tower",
-    51: "Keep",
-    64: "Murder Holes",
-    194: "Architecture",
-    377: "Treadmill Crane",
+    47: "Chemistry",
+    64: "Bombard Tower",
     380: "Heated Shot",
-    379: "Chemistry",
-    607: "Bombard Tower",
-    608: "Siege Engineers",
+    322: "Murder Holes",
+    608: "Arrowslits",
+    377: "Siege Engineers",
+    54: "Treadmill Crane",
+    140: "Guard Tower",
+    63: "Keep",
 }
 
 # Siege unit ids (subset of UNIT_NAMES that are siege weapons). Used for first-siege/first-treb
