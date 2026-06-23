@@ -17,7 +17,7 @@ def analyze_replay(
     owner_profile_id: int,
     *,
     result: str | None = None,
-    model: str = "sonnet",
+    model: str = "opus",
     civ: str = "",
     elo_band: str = "",
     match_id: str | None = None,

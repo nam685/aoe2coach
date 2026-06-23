@@ -273,7 +273,7 @@ def _model_from_data(data: dict) -> str:
 
 def run_agentic_coach(
     workspace,
-    model: str = "sonnet",
+    model: str = "opus",
     claude_bin: str = "claude",
     timeout: int = 180,
     max_turns: int = 12,
@@ -310,7 +310,7 @@ def run_agentic_coach(
 
 
 def run_claude_coach(
-    prompt: str, model: str = "sonnet", claude_bin: str = "claude", timeout: int = 120
+    prompt: str, model: str = "opus", claude_bin: str = "claude", timeout: int = 120
 ) -> tuple[str, str]:
     """Run `claude -p <prompt> --model <model> --output-format json` and return (result_text, model).
 
@@ -412,7 +412,7 @@ def coach(
     salient_log: str,
     benchmarks: str = BENCHMARKS,  # noqa: ARG001 — eval-contract interface; baseline prompt embeds benchmarks in COACH_SYSTEM
     result: str = "unknown",  # noqa: ARG001 — eval-contract interface; baseline prompt does not consume result
-    model: str = "sonnet",
+    model: str = "opus",
     claude_bin: str = "claude",
     *,
     reconstruction=None,
