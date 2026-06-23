@@ -5,16 +5,17 @@ explanation: >
   units and upgrades you actually want. Balanced eco lets you produce continuously instead of
   bottlenecking on the resource you neglected.
 severity: low
-# needs-#2: requires the per-resource villager split (#2), which depends on resource-flow modelling
-# unavailable on save 68.0 (WORK ops absent; GATHER_POINT is too sparse alone). Reference-only;
-# detector disabled so it never false-fires.
-confidence_tier: needs-#2
+# heuristic: reads the MID-GAME worker-allocation share (#2 gathering intent) — a COUNT-based signal
+# (how many workers on each resource), never a fabricated resource amount. Fires when one resource's
+# worker share dominates mid-game. Estimate, not exact.
+confidence_tier: heuristic
 
 detector:
-  fn: disabled
-  inputs: [economy.vils_per_resource]
-  params: {}
-  condition: "DISABLED — needs #2 vils-per-resource split; never fires."
+  fn: over_collecting_one_res
+  inputs: [economy.worker_allocation.mid_game_share]
+  params:
+    max_share: 0.6
+  condition: "any resource's mid-game worker share > max_share"
 
 fix: >
   Match your villager distribution to what you're producing: enough food for villagers and units,

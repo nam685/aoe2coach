@@ -39,7 +39,9 @@ EXPECTED_IDS = {
     "floating-resources",
     "over-collecting-one-res",
 }
-NEEDS_2 = {"floating-resources", "over-collecting-one-res"}
+# These are the #2-economy detectors: now ENABLED heuristic detectors that read the injected economy
+# (worker-allocation + spending shares). They honestly SKIP when no economy is injected (input absent).
+ECONOMY_DETECTORS = {"floating-resources", "over-collecting-one-res"}
 
 
 # --------------------------------------------------------------------- library + schema
@@ -51,11 +53,13 @@ def test_library_loads_all_entries_and_validates():
     assert "exposed-gold" in lib and not lib["exposed-gold"].disabled
 
 
-def test_needs_2_entries_are_disabled():
+def test_economy_detectors_are_enabled_heuristic():
     lib = mistakes.load_library()
-    for mid in NEEDS_2:
-        assert lib[mid].confidence_tier == "needs-#2"
-        assert lib[mid].disabled  # fn: disabled — reference-only
+    for mid in ECONOMY_DETECTORS:
+        assert lib[mid].confidence_tier == "heuristic"
+        assert not lib[mid].disabled  # now enabled — fire off the injected #2 economy
+    assert lib["floating-resources"].detector.fn == "floating_resources"
+    assert lib["over-collecting-one-res"].detector.fn == "over_collecting_one_res"
 
 
 def test_index_refs_all_resolve():
@@ -378,12 +382,44 @@ def test_walled_too_early_trigger_and_not():
 
 
 # ----------------------------------------------------------------- pass-level behaviour
-def test_needs_2_never_in_output():
+def test_economy_detectors_skip_without_economy():
     r = _base_recon()
-    # even with economy fields present, disabled detectors must not appear.
-    r["economy"] = {"stockpile_estimate": {"wood": 1000}, "vils_per_resource": {"wood": 50}}
+    # No economy injected -> the economy detectors have no input -> honest skip (never fire).
     flagged_ids = {f.id for f in mistakes.detect_mistakes(r)}
-    assert flagged_ids.isdisjoint(NEEDS_2)
+    assert flagged_ids.isdisjoint(ECONOMY_DETECTORS)
+
+
+def test_floating_detector_fires_on_injected_economy():
+    r = _base_recon()
+    econ = {
+        "worker_allocation": {"mid_game_share": {"wood": 0.7, "food": 0.2, "gold": 0.1, "stone": 0.0}},
+        "resource_balance": {
+            "floating": {
+                "flags": [
+                    {"resource": "wood", "worker_share": 0.7, "spend_share": 0.3, "excess": 0.4},
+                ]
+            }
+        },
+    }
+    flagged = mistakes.detect_mistakes(r, economy=econ)
+    ids = {f.id for f in flagged}
+    assert "floating-resources" in ids  # wood gathering intent >> spend share
+    assert "over-collecting-one-res" in ids  # wood worker share 0.7 > 0.6 ceiling
+    fr = next(f for f in flagged if f.id == "floating-resources")
+    assert fr.confidence_tier == "heuristic"
+    assert fr.observed["floating"][0]["resource"] == "wood"
+    # the original recon dict is not mutated by the injection
+    assert "economy" not in r
+
+
+def test_floating_detector_quiet_when_balanced():
+    r = _base_recon()
+    econ = {
+        "worker_allocation": {"mid_game_share": {"wood": 0.35, "food": 0.4, "gold": 0.25, "stone": 0.0}},
+        "resource_balance": {"floating": {"flags": []}},  # no mid-game float
+    }
+    ids = {f.id for f in mistakes.detect_mistakes(r, economy=econ)}
+    assert ids.isdisjoint(ECONOMY_DETECTORS)
 
 
 def test_missing_input_degrades_not_raises():
@@ -441,13 +477,14 @@ def test_calibration_game_golden():
     # An idle/low-APM-driven flag consistent with very low effective APM.
     assert "idle-tc" in ids or "long-vil-gap" in ids
 
-    # Must NOT false-positive: too-few-villagers (126 produced is an upper bound), no needs-#2.
+    # Must NOT false-positive: too-few-villagers (126 produced is an upper bound). Without economy
+    # injected, the economy detectors honestly skip.
     assert "too-few-villagers" not in ids
-    assert ids.isdisjoint(NEEDS_2)
+    assert ids.isdisjoint(ECONOMY_DETECTORS)
 
     # honesty tags + serializable
     for f in flagged:
-        assert f.confidence_tier in ("exact", "heuristic")  # needs-#2 never fires
+        assert f.confidence_tier in ("exact", "heuristic")
     json.dumps([f.to_dict() for f in flagged])
 
 
@@ -459,7 +496,7 @@ def test_second_rec_runs_clean():
     recon = reconstruct(parse_rec(REC2_PATH, RELIC_PROFILE_ID)).to_dict()
     flagged = mistakes.detect_mistakes(recon)
     ids = {f.id for f in flagged}
-    assert ids.isdisjoint(NEEDS_2)
+    assert ids.isdisjoint(ECONOMY_DETECTORS)  # no economy injected -> economy detectors skip
     json.dumps([f.to_dict() for f in flagged])
 
 

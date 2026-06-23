@@ -204,20 +204,25 @@ def reconstruct(rec):
     }
 
     # --- efficiency (ME real APM + idle) ---
-    eff = (
-        efficiency.tc_idle(ops, me_num)
-        if me_num is not None
-        else {
+    # Pre-cap cutoff: TC idle only counts BEFORE estimated pop hits the 200 cap (after which a quiet
+    # TC is intentional, not a mistake). Estimated pop = simulated villagers + cumulative non-vil
+    # army produced (an over-estimate -> safe early cutoff).
+    if me_num is not None:
+        precap_s = efficiency.precap_cutoff_s(vil_sim, production["produced_units"], duration_ms // 1000)
+        eff = efficiency.tc_idle(ops, me_num, precap_s=precap_s)
+    else:
+        eff = {
             "tc_idle_s": 0,
+            "precap_window_s": 0,
             "longest_villager_gap_s": 0,
             "longest_villager_gap_window_s": None,
             "idle_gap_windows_s": [],
             "villager_gaps_s": [],
         }
-    )
     apm = efficiency.apm_split(ops, me_num, duration_ms) if me_num is not None else {}
     efficiency_block = {
         "tc_idle_s": eff["tc_idle_s"],
+        "precap_window_s": eff.get("precap_window_s"),
         "longest_villager_gap_s": eff["longest_villager_gap_s"],
         "longest_villager_gap_window_s": eff.get("longest_villager_gap_window_s"),
         "idle_gap_windows_s": eff.get("idle_gap_windows_s", []),

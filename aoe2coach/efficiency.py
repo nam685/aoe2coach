@@ -43,20 +43,76 @@ _MILITARY_CONTROL_ACTIONS = {
 }
 
 
-def tc_idle(ops, player, threshold_s=IDLE_GAP_THRESHOLD_S):
+# AoE2 hard population cap: once the player reaches it (and stops queuing villagers), a quiet TC is
+# intentional, not idle. We only count idle BEFORE the player's estimated pop reaches this.
+POP_CAP = const.POP_CAP
+
+
+def precap_cutoff_s(sim, produced_units, duration_s, pop_cap=POP_CAP):
+    """First time `t` (seconds) where the player's ESTIMATED population reaches `pop_cap`.
+
+    Pop is estimated as sim.villagers_present(t) + cumulative NON-villager units produced by t. This
+    deliberately OVER-estimates pop (army `*_produced` is a cumulative-queued upper bound, deaths
+    unlogged), which is the safe direction for a CUTOFF: it lands the pre-cap window EARLY, so it
+    trims clearly-intentional late-game TC quiet and never inflates the idle headline.
+
+    If the cap is never reached, fall back to the last villager-queue time (production really did
+    keep wanting villagers to the end) — or the whole game if that's later. Returns an int seconds.
+    `sim` is a production.VillagerSim; `produced_units` is recon.production.produced_units (list of
+    {unit_id, amount, t_s}); `duration_s` is the game length. Pure; never raises on missing fields.
+    """
+    duration_s = int(duration_s or 0)
+    # Cumulative non-villager produced amount by time t, from a sorted (t_s, amount) prefix sum.
+    nonvil = sorted(
+        (int(u.get("t_s", 0) or 0), int(u.get("amount", 0) or 0))
+        for u in (produced_units or [])
+        if isinstance(u, dict) and u.get("unit_id") != const.VILLAGER_ID
+    )
+    times = [t for t, _ in nonvil]
+    cum, running = [], 0
+    for _, amt in nonvil:
+        running += amt
+        cum.append(running)
+
+    def _nonvil_by(t):
+        import bisect
+
+        i = bisect.bisect_right(times, t)
+        return cum[i - 1] if i > 0 else 0
+
+    step = 5
+    t = 0
+    while t <= duration_s:
+        est_pop = sim.villagers_present(t) + _nonvil_by(t)
+        if est_pop >= pop_cap:
+            return t
+        t += step
+    # Cap never reached: the player kept wanting villagers — use the last villager queue if known,
+    # else the whole game. The last pop time approximates the last villager queue intent.
+    last_vil = int(sim.pop_times_s[-1]) if sim.pop_times_s else 0
+    return max(last_vil, duration_s) if last_vil else duration_s
+
+
+def tc_idle(ops, player, threshold_s=IDLE_GAP_THRESHOLD_S, precap_s=None):
     """Villager-production idle from gaps between consecutive villager DE_QUEUE commands.
 
     Returns:
-      {"tc_idle_s": total idle seconds (sum of gaps over threshold),
-       "longest_villager_gap_s": longest single gap (0 if <2 villagers),
+      {"tc_idle_s": total idle seconds (sum of over-threshold gaps WITHIN the pre-cap window),
+       "precap_window_s": the pre-cap cutoff in seconds (idle% = tc_idle_s / precap_window_s),
+       "longest_villager_gap_s": longest single gap over the WHOLE game (0 if <2 villagers),
        "longest_villager_gap_window_s": [start_s, end_s] of that gap (None if <2 villagers),
-       "idle_gap_windows_s": [[start_s, end_s], ...] for every gap OVER threshold (when idle happened),
+       "idle_gap_windows_s": [[start_s, end_s], ...] for every gap OVER threshold (whole game),
        "villager_gaps_s": [each gap in seconds, in order]}
 
     A "gap" is the time between two consecutive villager queues; only the portion of gaps EXCEEDING
     a normal train time is idle, so we count gap-minus-threshold summed over gaps > threshold. This
     is an exact, command-derived idle signal (matches CaptureAge's IDL-TC intent), not an estimate.
-    Gap WINDOWS are exposed so the coach can say WHEN the idle was, not guess.
+
+    PRE-CAP ONLY (Nam): TC idle is only a MISTAKE while you still want villagers. After ~200 pop you
+    stop making them, so a quiet TC then is intentional, not idle. `precap_s` is the first time the
+    player's estimated pop reaches the cap (from `precap_cutoff_s`); when given, `tc_idle_s` sums only
+    the over-threshold idle that occurred BEFORE it. A gap straddling the cutoff is clipped at it.
+    Longest-gap / windows are reported over the whole game as before (context, not the headline).
     """
     times = sorted(
         t
@@ -65,7 +121,6 @@ def tc_idle(ops, player, threshold_s=IDLE_GAP_THRESHOLD_S):
     )
     # gaps[k] is the gap between villager queue k and k+1 (i.e. between times[k] and times[k+1]).
     gaps = [(times[i] - times[i - 1]) // 1000 for i in range(1, len(times))]
-    idle = sum(max(0, g - threshold_s) for g in gaps)
     longest = max(gaps) if gaps else 0
     longest_window = None
     idle_windows = []
@@ -73,8 +128,23 @@ def tc_idle(ops, player, threshold_s=IDLE_GAP_THRESHOLD_S):
         j = max(range(len(gaps)), key=lambda k: gaps[k])  # index of the longest gap
         longest_window = [times[j] // 1000, times[j + 1] // 1000]
         idle_windows = [[times[k] // 1000, times[k + 1] // 1000] for k, g in enumerate(gaps) if g > threshold_s]
+
+    # Pre-cap idle: clip each gap to [0, precap_s] before measuring its over-threshold idle, so
+    # late-game (post-200-pop) TC quiet is excluded and a straddling gap is counted only up to cutoff.
+    if precap_s is None:
+        precap_s = times[-1] // 1000 if times else 0
+    idle = 0
+    for k in range(1, len(times)):
+        start_s = times[k - 1] // 1000
+        end_s = times[k] // 1000
+        clipped_end = min(end_s, precap_s)
+        if clipped_end <= start_s:
+            continue  # gap starts at/after the cap -> intentional quiet, not idle
+        idle += max(0, (clipped_end - start_s) - threshold_s)
+
     return {
         "tc_idle_s": idle,
+        "precap_window_s": int(precap_s),
         "longest_villager_gap_s": longest,
         "longest_villager_gap_window_s": longest_window,
         "idle_gap_windows_s": idle_windows,

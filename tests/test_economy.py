@@ -326,3 +326,130 @@ def test_real_rec2_runs_and_serializes():
 # ------------------------------------------------------------------- validate_collected (measure)
 def test_validate_collected_suppressed():
     assert econ.validate_collected(None, {"food": 1, "wood": 1, "gold": 1, "stone": 1}) == {"suppressed": True}
+
+
+# ----------------------------------------------------------------------------- fishing -> food (#1)
+def test_fishing_food_workers_counts_ships_and_traps():
+    ops = [
+        (10_000, Action.DE_QUEUE, {"player_id": 1, "unit_id": 13, "amount": 3}),  # 3 fishing ships
+        (20_000, Action.BUILD, {"player_id": 1, "building_id": 199}),  # fish trap
+        (30_000, Action.BUILD, {"player_id": 1, "building_id": 199}),  # fish trap
+        (40_000, Action.DE_QUEUE, {"player_id": 2, "unit_id": 13, "amount": 5}),  # opp -> ignored
+    ]
+    assert econ.fishing_food_workers(ops, player=1) == 5  # 3 ships + 2 traps
+    # time-windowed: only the ships at 10s
+    assert econ.fishing_food_workers(ops, player=1, at_s=15) == 3
+
+
+def test_fishing_food_workers_zero_on_land_map():
+    # no Dock units / fish traps -> graceful 0 (land game).
+    ops = [(10_000, Action.DE_QUEUE, {"player_id": 1, "unit_id": 83, "amount": 4})]
+    assert econ.fishing_food_workers(ops, player=1) == 0
+
+
+def test_worker_split_folds_fishing_into_food():
+    focus = [{"t_s": 30, "resource": "wood"}, {"t_s": 60, "resource": "gold"}]
+    pop_times = [25 * i for i in range(1, 8)]  # 25..175
+    ages = {"feudal_arrival_s": 200, "castle_arrival_s": None, "imperial_arrival_s": None}
+    fishing_ops = [
+        (50_000, Action.DE_QUEUE, {"player_id": 1, "unit_id": 13, "amount": 4}),  # 4 fishing ships
+        (80_000, Action.BUILD, {"player_id": 1, "building_id": 199}),  # 1 fish trap
+    ]
+    no_fish = econ.worker_split_at_ages(focus, pop_times, starting=3, ages=ages)
+    with_fish = econ.worker_split_at_ages(focus, pop_times, starting=3, ages=ages, fishing_ops=fishing_ops, player=1)
+    assert with_fish["feudal"]["fishing_workers"] == 5
+    # fishing adds to food workers present, raising the food share
+    assert with_fish["feudal"]["workers_present"] == no_fish["feudal"]["villagers_present"] + 5
+    assert with_fish["feudal"]["shares"]["food"] > no_fish["feudal"]["shares"]["food"]
+
+
+# ----------------------------------------------------------------------------- floating heuristic (#3)
+def test_floating_signal_flags_intent_over_spend():
+    # workers piled on wood (intent .6) but only .2 of spend is wood -> wood floats.
+    worker_share = {"wood": 0.6, "food": 0.3, "gold": 0.1, "stone": 0.0}
+    spend_share = {"wood": 0.2, "food": 0.5, "gold": 0.3, "stone": 0.0}
+    out = econ.floating_signal(worker_share, spend_share)
+    flags = {f["resource"] for f in out["flags"]}
+    assert "wood" in flags  # excess 0.4 > FLOAT_MARGIN
+    assert "food" not in flags  # spending exceeds intent -> not floating
+    assert out["estimate"] is True
+    # never a bank total — only the two shares + gap
+    wood = next(f for f in out["flags"] if f["resource"] == "wood")
+    assert set(wood) == {"resource", "worker_share", "spend_share", "excess"}
+
+
+def test_floating_signal_empty_on_no_signal():
+    assert econ.floating_signal({}, {"wood": 1.0}) == {}
+    assert econ.floating_signal({"wood": 1.0}, {}) == {}
+
+
+def test_floating_signal_balanced_no_flags():
+    ws = {"wood": 0.3, "food": 0.4, "gold": 0.3, "stone": 0.0}
+    ss = {"wood": 0.3, "food": 0.4, "gold": 0.3, "stone": 0.0}
+    out = econ.floating_signal(ws, ss)
+    assert out["flags"] == []
+
+
+def test_mid_game_worker_share_normalizes():
+    focus = [{"t_s": t, "resource": ("wood" if t % 2 else "food")} for t in range(300, 2000, 60)]
+    pop_times = [25 * i for i in range(1, 60)]
+    share = econ.mid_game_worker_share(focus, pop_times, starting=3, duration_s=2400)
+    assert share  # non-empty
+    assert abs(sum(share.values()) - 1.0) < 1e-6
+
+
+# ----------------------------------------------------------------------- two-block economy.json (#4)
+def test_estimate_economy_two_blocks_distinct_units():
+    recon = {
+        "techs": {"eco": [{"name": "Double-Bit Axe", "t_s": 600}]},
+        "ages": {"feudal_arrival_s": 200, "castle_arrival_s": 800, "imperial_arrival_s": 2000},
+        "meta": {"duration_s": 3000, "my_civ": "Britons"},
+    }
+    ops = _assign_ops() + [
+        (i * 25_000, Action.DE_QUEUE, {"player_id": 1, "unit_id": 83, "amount": 1}) for i in range(20)
+    ]
+    # add some spending: a barracks + archers + a tech
+    ops += [
+        (300_000, Action.BUILD, {"player_id": 1, "building_id": 12}),
+        (400_000, Action.DE_QUEUE, {"player_id": 1, "unit_id": 4, "amount": 6}),
+        (500_000, Action.RESEARCH, {"player_id": 1, "technology_id": 22}),
+    ]
+    out = econ.estimate_economy(ops, player=1, gaia_list=_gaia_objs(), recon=recon)
+    # TWO clearly-named, never-conflated blocks.
+    wa = out["worker_allocation"]
+    rb = out["resource_balance"]
+    assert wa["unit"] == "workers"
+    assert rb["unit"] == "resource_amounts"
+    assert "per_age" in wa and "mid_game_share" in wa
+    assert "spent_by_resource" in rb and "floating" in rb
+    # spending is near-exact (non-zero given the commands)
+    assert sum(rb["spent_by_resource"].values()) > 0
+    # NO fabricated gathered/bank totals
+    assert rb["collected"] is None
+    assert out["collected"] is None
+    assert rb["relic_gold"] == "unavailable"
+    import json
+
+    json.dumps(out)  # serializable
+
+
+@requires_rec
+def test_real_rec_two_blocks_wood_present_no_fabricated_totals():
+    """game1: WOOD must be a top worker allocation AND a top spend (not ~0); no fabricated bank
+    totals; relic gold unavailable."""
+    from aoe2coach.parser import parse_rec
+    from aoe2coach.reconstruct import reconstruct
+
+    rec = parse_rec(REC_PATH, RELIC_PROFILE_ID)
+    recon = reconstruct(rec).to_dict()
+    out = econ.estimate_economy(rec.ops, player=rec.me["number"], gaia_list=rec.gaia_objects, recon=recon)
+    wa, rb = out["worker_allocation"], out["resource_balance"]
+    # WOOD is a meaningful worker allocation (the old bug read ~all food).
+    assert wa["mid_game_share"].get("wood", 0) >= 0.15, wa["mid_game_share"]
+    # WOOD is a top spend resource (lots of farms/buildings/military).
+    spent = rb["spent_by_resource"]
+    assert spent["wood"] > 0
+    assert spent["wood"] >= max(spent.values()) * 0.5, spent  # wood is among the largest spends
+    # no fabricated gathered/bank totals anywhere
+    assert rb["collected"] is None and out["collected"] is None
+    assert rb["relic_gold"] == "unavailable"

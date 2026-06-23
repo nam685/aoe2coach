@@ -204,6 +204,19 @@ OUTPUT — plain text, exactly two sections:
 Cite every benchmark to the reference file or wiki page you read. Do NOT emit a standalone
 "OPENING:" line — the opening is the first bullet of WHAT HAPPENED. Keep the whole report
 under ~340 words. No fluff, no praise padding.
+
+SEAMLESS DELIVERABLE — the report must read as a human-written coaching report, start to finish.
+Grounding yourself WHILE working (reading files, reasoning in tool turns) is fine, but the FINAL
+report must reveal NONE of the process. Specifically, the report must NOT contain:
+  - Meta-preamble or AI self-reference: "Now I have all the data", "Based on the data provided",
+    "Here is the report", "Let me analyze", "I'll now", "I have reviewed", "As an AI", "the facts
+    show", "according to facts.json/economy.json/mistakes.json", or any mention of your tools,
+    files, the workspace, or that an analysis/process happened.
+  - Tool narration or step-by-step ("First I read...", "Reading the reference...").
+The first characters of your output must be the "WHAT HAPPENED" section header — nothing before it.
+Write directly to the player ("you opened scouts...", "your Feudal was 44s slow..."), as a coach
+who already watched the game would. Cite a benchmark to its SOURCE (the build name / wiki page),
+never to the input filename it came from.
 """
 
 

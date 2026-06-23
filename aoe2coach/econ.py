@@ -28,7 +28,7 @@ from collections import Counter
 
 from mgz.fast import Action
 
-from . import const, production, rates
+from . import const, production, rates, spend
 from . import gaia as gaia_mod
 
 _RESOURCES = ("food", "wood", "gold", "stone")
@@ -55,6 +55,33 @@ _DROPOFF_RESOURCE = {
 }
 _MINING_CAMP_ID = 584  # nearest gold/stone mine decides
 _FARM_BUILDING_ID = 50
+
+# Water FOOD workers: a Fishing Ship (Dock unit, id 13) gathers food from shore/deep fish, and a Fish
+# Trap (BUILD id 199) is a buildable food source a fishing ship works. On a no-water (land) map there
+# are zero of both, so this gracefully contributes nothing. Counted as FOOD workers in the model.
+_FISHING_SHIP_UNIT_ID = 13
+_FISH_TRAP_BUILDING_ID = 199
+
+
+def fishing_food_workers(ops, player, *, at_s=None):
+    """Count `player`'s WATER food workers — Fishing Ships queued (Dock unit 13) + Fish Traps built
+    (BUILD 199) — optionally only those committed at or before `at_s` seconds.
+
+    A Fishing Ship is a queued unit (DE_QUEUE, respects `amount`); a Fish Trap is a placed building
+    (BUILD). Both feed FOOD. Returns an int; zero on no-water games (graceful). Pure; never raises.
+    """
+    n = 0
+    for t, action_type, data in ops:
+        if data.get("player_id") != player:
+            continue
+        if at_s is not None and t // 1000 > at_s:
+            continue
+        if action_type == Action.DE_QUEUE and data.get("unit_id") == _FISHING_SHIP_UNIT_ID:
+            n += int(data.get("amount", 1) or 1)
+        elif action_type == Action.BUILD and data.get("building_id") == _FISH_TRAP_BUILDING_ID:
+            n += 1
+    return n
+
 
 # A bare-ground (target_type -1) or unresolved gather point is matched to the nearest GAIA resource
 # only if it sits within this many tiles — beyond it the click is a MOVE, not a gather (never fabricate).
@@ -160,13 +187,18 @@ def _focus_window_dist(focus_events, t_s):
     return c
 
 
-def worker_split_at_ages(focus_events, pop_times_s, starting, ages):
-    """Estimated villager-on-resource split at each age boundary (the primary deliverable).
+def worker_split_at_ages(focus_events, pop_times_s, starting, ages, fishing_ops=None, player=None):
+    """Estimated WORKER-on-resource split at each age boundary (the primary deliverable; unit=workers).
 
     Each villager POPPED (from the production simulation) by the age-arrival time is attributed to the
     trailing-window gather-point distribution at its pop time (fractional, to smooth the single-focus
-    flip-flop). Starting villagers seed food (they begin on sheep/berries). Returns
-    {age: {estimate, alloc:{resource: count}, shares:{resource: frac}, villagers_present} | None}.
+    flip-flop). Starting villagers seed food (they begin on sheep/berries). FISHING workers (Fishing
+    Ships + Fish Traps committed by the age time) are added as FOOD workers — zero on land maps, so
+    this is a no-op there. Returns {age: {estimate, alloc:{resource: count}, shares:{resource: frac},
+    villagers_present, fishing_workers} | None}.
+
+    `fishing_ops`/`player`: when both given, fishing food workers committed by each age time are
+    counted via fishing_food_workers and folded into the food allocation/share.
     """
     out = {}
     for age in ("feudal", "castle", "imperial"):
@@ -186,14 +218,23 @@ def worker_split_at_ages(focus_events, pop_times_s, starting, ages):
                 for r, n in wd.items():
                     acc[r] += n / tot
                 attributed += 1
-        present = starting + sum(1 for pt in pop_times_s if pt <= t)
+        vils_present = starting + sum(1 for pt in pop_times_s if pt <= t)
+        # Water food workers committed by this age time (0 on land maps -> graceful no-op).
+        fishing = (
+            fishing_food_workers(fishing_ops, player, at_s=t) if (fishing_ops is not None and player is not None) else 0
+        )
+        acc["food"] += fishing
+        present = vils_present + fishing
         grand = sum(acc.values())
-        # Normalize the resource shares to the physical villagers-present count.
+        # Normalize the resource shares to the physical workers-present count.
         shares = {r: acc[r] / grand for r in acc} if grand else {}
         alloc = {r: round(shares.get(r, 0.0) * present) for r in _RESOURCES if shares.get(r, 0.0) > 0}
         out[age] = {
             "estimate": True,
-            "villagers_present": present,
+            "unit": "workers",
+            "villagers_present": vils_present,
+            "fishing_workers": fishing,
+            "workers_present": present,
             "n_attributed": attributed,
             "alloc": alloc,
             "shares": {r: round(s, 3) for r, s in shares.items()},
@@ -280,6 +321,99 @@ def collected_estimate(totals, max_worker_seconds=None):
     return out
 
 
+# --- Floating heuristic (#3) -------------------------------------------------------------------
+# FLOATING is a HEURISTIC mismatch between gathering INTENT (worker share, from the gather model) and
+# SPENDING share (near-exact, from spend.py) — NOT an absolute bank total (those stay suppressed).
+# We only judge the MID-GAME: end-game float (a maxed eco with nothing left to spend on) is normal,
+# so a late float is not a mistake. A resource floats when its mid-game worker share EXCEEDS its
+# mid-game spend share by a sustained margin.
+
+# Mid-game window as a fraction of game duration. Skip the opening (no spend signal yet, villagers
+# still being seeded) and the end-game (float is normal once maxed). Castle/early-Imperial is where a
+# real float (e.g. banked stone with no castle, banked wood with no production) actually hurts.
+MIDGAME_START_FRAC = 0.25
+MIDGAME_END_FRAC = 0.80
+
+# A resource is flagged floating when (worker_share - spend_share) exceeds this. The worker share is
+# the gathering INTENT; if you put 30% of workers on a resource but only spend 10% of your outlay on
+# it, ~20% of your gathering is piling up. Tunable; deliberately conservative to avoid false fires.
+FLOAT_MARGIN = 0.15
+
+
+def mid_game_worker_share(focus_events, pop_times_s, starting, duration_s, fishing_ops=None, player=None):
+    """Worker SHARE per resource over the mid-game window (gathering INTENT, fractions summing ~1).
+
+    Integrates Σ workers_on_R(t) over [MIDGAME_START_FRAC, MIDGAME_END_FRAC]·duration using the
+    trailing-window gather distribution and the simulated worker population — the same intent signal
+    as the per-age split, but averaged over the mid-game so a single flip-flop can't dominate.
+    Returns {resource: frac} or {} if no signal. Fishing adds to food intent (0 on land). Pure."""
+    if not duration_s:
+        return {}
+    start = int(duration_s * MIDGAME_START_FRAC)
+    end = int(duration_s * MIDGAME_END_FRAC)
+    if end <= start:
+        return {}
+    acc = dict.fromkeys(_RESOURCES, 0.0)
+    step = 30
+    t = start
+    while t < end:
+        mid = t + step // 2
+        present = starting + sum(1 for pt in pop_times_s if pt <= mid)
+        if fishing_ops is not None and player is not None:
+            present += fishing_food_workers(fishing_ops, player, at_s=mid)
+        wd = _focus_window_dist(focus_events, mid)
+        tot = sum(wd.values())
+        if tot and present:
+            for r, n in wd.items():
+                if r in acc:
+                    acc[r] += present * (n / tot) * step
+        elif present:
+            acc["food"] += present * step  # no gather signal -> assume food (sheep/berries)
+        t += step
+    grand = sum(acc.values())
+    if grand <= 0:
+        return {}
+    return {r: acc[r] / grand for r in _RESOURCES}
+
+
+def floating_signal(worker_share, spend_share):
+    """HEURISTIC floating flags from the mid-game worker share vs spend share (both fractions).
+
+    For each resource, excess = worker_share - spend_share. A POSITIVE sustained excess beyond
+    FLOAT_MARGIN means gathering intent outruns spending -> that resource is floating. Returns
+    {"flags": [{resource, worker_share, spend_share, excess}], "estimate": True, "basis": "..."}.
+    Empty flags = no float detected. NEVER reports a bank total — only the two shares + their gap.
+    Returns {} (no signal) if either share is empty."""
+    if not worker_share or not spend_share:
+        return {}
+    flags = []
+    for r in _RESOURCES:
+        ws = worker_share.get(r, 0.0)
+        ss = spend_share.get(r, 0.0)
+        excess = ws - ss
+        if excess > FLOAT_MARGIN:
+            flags.append(
+                {
+                    "resource": r,
+                    "worker_share": round(ws, 3),
+                    "spend_share": round(ss, 3),
+                    "excess": round(excess, 3),
+                }
+            )
+    flags.sort(key=lambda f: -f["excess"])
+    return {
+        "estimate": True,
+        "flags": flags,
+        "worker_share": {r: round(worker_share.get(r, 0.0), 3) for r in _RESOURCES},
+        "spend_share": {r: round(spend_share.get(r, 0.0), 3) for r in _RESOURCES},
+        "basis": (
+            "MID-GAME heuristic: per-resource mid-game gathering-intent SHARE (worker allocation) "
+            "minus SPENDING share (near-exact from commands). A positive sustained gap = floating R. "
+            "End-game float is normal and excluded. NOT a bank total."
+        ),
+    }
+
+
 def _qualitative_shape(focus_events, recon, farm_count):
     """Heuristic eco NARRATIVE from gather-point timestamps + eco techs + farm count (interpretation
     is heuristic, the timestamps are exact). Never a number presented as fact — just the shape."""
@@ -304,11 +438,17 @@ def _qualitative_shape(focus_events, recon, farm_count):
 
 
 def estimate_economy(ops, player, gaia_list, recon):
-    """Assemble the full ESTIMATE block: gather-focus events + simulated pops -> per-age worker split
-    + collected band (suppressed if implausible / out of band) + qualitative shape.
+    """Assemble the full ESTIMATE block as TWO distinct, never-conflated blocks:
 
-    Returns a JSON-serializable dict, always labeled `estimate: true`. `collected` is a per-resource
-    band dict OR None (suppressed). `worker_split_at_ages` and `qualitative` are always present.
+      worker_allocation  — villager + fishing COUNTS per resource (unit=workers): per age + a
+                           mid-game share. The gathering INTENT signal. tier=estimate.
+      resource_balance   — per-resource SPENDING (near-exact from BUILD+DE_QUEUE+RESEARCH commands)
+                           + qualitative FLOATING flags (heuristic mid-game intent-vs-spend gap).
+                           NO fabricated gathered/bank totals. tier=mixed (spend near-exact / float
+                           heuristic).
+
+    Returns a JSON-serializable dict, always labeled `estimate: true`. Collected gathered totals stay
+    SUPPRESSED (we never fabricate bank totals); relic gold is always `unavailable`.
     """
     # Accept either #1's Reconstruction object or its dict form.
     if not isinstance(recon, dict):
@@ -318,30 +458,73 @@ def estimate_economy(ops, player, gaia_list, recon):
     ages = recon.get("ages", {})
     civ = recon.get("meta", {}).get("my_civ")
     starting = const.starting_villagers(civ)
+    duration_s = recon.get("meta", {}).get("duration_s")
 
     focus = gather_focus_events(ops, player, gaia_by_objid, resource_points)
     sim = production.simulate_villagers(ops, player, civ, ages)
     farm_count = active_farms(ops, player)
+    fishing_total = fishing_food_workers(ops, player)
 
-    split = worker_split_at_ages(focus, sim.pop_times_s, starting, ages)
-    totals, villager_seconds = _integrate_collected(focus, sim.pop_times_s, starting, recon)
-    collected = collected_estimate(totals, max_worker_seconds=villager_seconds)
-    qualitative = _qualitative_shape(focus, recon, farm_count)
-
+    # --- worker_allocation block (unit = workers; villager + fishing counts) ---
+    split = worker_split_at_ages(focus, sim.pop_times_s, starting, ages, fishing_ops=ops, player=player)
+    mg_worker_share = mid_game_worker_share(
+        focus, sim.pop_times_s, starting, duration_s, fishing_ops=ops, player=player
+    )
     focus_by_res = Counter(e["resource"] for e in focus)
+    worker_allocation = {
+        "unit": "workers",
+        "tier": "estimate",
+        "estimate": True,
+        "per_age": split,
+        "mid_game_share": {r: round(s, 3) for r, s in mg_worker_share.items()},
+        "n_gather_focus_events": len(focus),
+        "gather_focus_by_resource": dict(focus_by_res),
+        "fishing_workers_total": fishing_total,
+        "active_farms": farm_count,
+        "note": (
+            "WORKER COUNTS per resource (villagers + fishing), NOT resource amounts. e.g. 'food: 18' "
+            "means 18 workers gathering food. From GATHER_POINT intent + the #1 production sim; "
+            "fishing (ships+traps) folds into food (0 on land maps)."
+        ),
+    }
+
+    # --- resource_balance block (unit = resource amounts; near-exact SPENDING + heuristic floating) ---
+    spent = spend.spent_by_resource(ops, player)
+    spend_sh = spend.spend_share(spent)
+    floating = floating_signal(mg_worker_share, spend_sh)
+    resource_balance = {
+        "unit": "resource_amounts",
+        "tier": "spending-near-exact + floating-heuristic",
+        "estimate": True,
+        "spent_by_resource": spent,
+        "spend_share": {r: round(spend_sh.get(r, 0.0), 3) for r in _RESOURCES} if spend_sh else {},
+        "floating": floating,
+        "collected": None,  # gathered/bank totals are NOT fabricated — suppressed by design
+        "relic_gold": "unavailable",
+        "note": (
+            "SPENDING is near-exact (sum of BUILD+DE_QUEUE+RESEARCH costs; ignores cancels -> slight "
+            "over-count). FLOATING is a HEURISTIC mid-game gap between gathering INTENT (worker share) "
+            "and spend share — NOT a bank total. Gathered/collected totals are deliberately suppressed "
+            "(never fabricated); relic gold is unavailable (no command signal)."
+        ),
+    }
+
+    qualitative = _qualitative_shape(focus, recon, farm_count)
 
     return {
         "estimate": True,
+        "worker_allocation": worker_allocation,
+        "resource_balance": resource_balance,
+        # Back-compat top-level keys retained for existing consumers/tests.
         "n_gather_focus_events": len(focus),
         "gather_focus_by_resource": dict(focus_by_res),
         "worker_split_at_ages": split,
-        "collected": collected,
+        "collected": None,
         "qualitative": qualitative,
         "note": (
-            "Tier-B ESTIMATE layer. Economy is NOT in the rec; reconstructed from GATHER_POINT commands "
-            "+ the villager-production simulation. The per-age WORKER SPLIT is the primary signal "
-            "(now captures wood, not ~all food); collected totals are suppressed unless plausible. "
-            "Relic gold is unavailable (no command signal)."
+            "Tier-B ESTIMATE layer, TWO blocks (never conflated): worker_allocation (villager+fishing "
+            "COUNTS per resource, unit=workers) and resource_balance (near-exact SPENDING + qualitative "
+            "FLOATING flags, NO fabricated gathered totals). Relic gold unavailable (no command signal)."
         ),
     }
 

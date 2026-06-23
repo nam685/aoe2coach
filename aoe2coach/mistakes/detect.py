@@ -55,7 +55,7 @@ def _inputs_present(recon, inputs):
     return True
 
 
-def detect_mistakes(recon, library=None, build_target=None):
+def detect_mistakes(recon, library=None, build_target=None, economy=None):
     """Run every enabled detector over `recon` and return the sorted Flagged list.
 
     Args:
@@ -64,6 +64,9 @@ def detect_mistakes(recon, library=None, build_target=None):
       build_target: optional matched-build age targets (from #3) for build-relative uptime flags;
         injected under recon['_build_target'] for the slow-age detectors (B.6). The recon is not
         mutated — a shallow copy carries the injection.
+      economy: optional #2 estimate_economy(...) dict. When given, it is injected under
+        recon['economy'] so the floating-resources / over-collecting detectors can read the
+        worker-allocation + spending shares. Absent -> those detectors honestly skip (input missing).
 
     Returns: list[Flagged], sorted by (severity desc, magnitude desc, id asc). Possibly empty —
     "no detectable mistakes" is a valid, honest answer.
@@ -79,9 +82,12 @@ def detect_mistakes(recon, library=None, build_target=None):
         recon = recon.to_dict()
 
     recon_view = recon
-    if build_target is not None:
+    if build_target is not None or economy is not None:
         recon_view = dict(recon)
-        recon_view["_build_target"] = build_target
+        if build_target is not None:
+            recon_view["_build_target"] = build_target
+        if economy is not None:
+            recon_view["economy"] = economy if isinstance(economy, dict) else economy.to_dict()
 
     flagged = []
     for rubric in library.values():

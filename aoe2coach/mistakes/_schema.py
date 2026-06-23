@@ -48,10 +48,11 @@ RECONSTRUCTION_PATHS = frozenset(
         "efficiency.longest_villager_gap_s",
         "efficiency.villager_gaps_s",
         "efficiency.apm_total",
-        # #2 economy fields (not emitted on save 68.0) — declared so `needs-#2` entries can name
-        # their intended inputs honestly even though their detector is disabled.
-        "economy.stockpile_estimate",
-        "economy.vils_per_resource",
+        # #2 economy fields. The floating signal is a HEURISTIC mid-game intent-vs-spend gap (NOT a
+        # bank total): resource_balance.floating carries the flags, worker_allocation.mid_game_share
+        # the gathering-intent shares. Injected into the recon view by detect_mistakes(economy=...).
+        "economy.resource_balance.floating",
+        "economy.worker_allocation.mid_game_share",
     }
 )
 

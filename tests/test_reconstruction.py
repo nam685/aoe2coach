@@ -266,6 +266,50 @@ def test_efficiency_tc_idle_gaps():
     assert idle["villager_gaps_s"] == [25, 65]
     assert idle["longest_villager_gap_s"] == 65
     assert idle["tc_idle_s"] == 35  # only the 65s gap exceeds the 30s threshold, by 35s
+    assert idle["precap_window_s"] == 90  # no explicit precap -> defaults to last queue time
+
+
+def test_tc_idle_only_counts_before_precap_cutoff():
+    """TC idle is only a mistake while you still want villagers. A big gap AFTER the pop-cap cutoff
+    is intentional quiet and must NOT count; a gap straddling the cutoff is clipped at it."""
+    from aoe2coach import efficiency
+
+    # villagers at 0, 25, then a long quiet, then a queue at 300s (gap 275s).
+    ops = [
+        (0, Action.DE_QUEUE, {"player_id": 1, "unit_id": 83, "amount": 1}),
+        (25_000, Action.DE_QUEUE, {"player_id": 1, "unit_id": 83, "amount": 1}),
+        (300_000, Action.DE_QUEUE, {"player_id": 1, "unit_id": 83, "amount": 1}),
+    ]
+    # cutoff at 100s: the 25->300 gap is clipped to 25->100 = 75s, idle = 75-30 = 45.
+    idle = efficiency.tc_idle(ops, player=1, precap_s=100)
+    assert idle["precap_window_s"] == 100
+    assert idle["tc_idle_s"] == 45
+    # cutoff at 25s (the moment after the 2nd queue): the big late gap starts AT the cap -> 0 idle.
+    idle2 = efficiency.tc_idle(ops, player=1, precap_s=25)
+    assert idle2["tc_idle_s"] == 0
+    # whole-game longest gap / windows are still reported for context.
+    assert idle["longest_villager_gap_s"] == 275
+
+
+def test_precap_cutoff_reaches_200_pop():
+    from aoe2coach import efficiency, production
+
+    # 50 villagers popped + non-vil army units pushing est pop to 200.
+    sim = production.VillagerSim(pop_times_s=[float(i * 5) for i in range(1, 60)], starting=3)
+    produced_units = [{"unit_id": 4, "amount": 150, "t_s": 200}]  # 150 archers at 200s
+    cutoff = efficiency.precap_cutoff_s(sim, produced_units, duration_s=600)
+    # est pop = villagers_present(t) + 150 (from t>=200); crosses 200 once ~47 vils have popped.
+    # villagers_present(235) = 3 + 47 = 50, + 150 = 200 -> cutoff ~235. Well within the game.
+    assert 200 <= cutoff <= 260
+
+
+def test_precap_cutoff_falls_back_when_cap_never_reached():
+    from aoe2coach import efficiency, production
+
+    sim = production.VillagerSim(pop_times_s=[float(i * 25) for i in range(1, 11)], starting=3)
+    # only ~13 pop ever -> cap never reached -> fall back to whole game (or last vil queue).
+    cutoff = efficiency.precap_cutoff_s(sim, [], duration_s=900)
+    assert cutoff >= 250  # last pop (250) or duration (900) — never raises, never 0
 
 
 def test_efficiency_apm_split_classifies():

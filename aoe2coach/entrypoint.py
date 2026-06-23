@@ -53,8 +53,10 @@ def analyze_replay(
     if use_v2:
         recon = reconstruct(rec)
         cands = classify(recon)
-        flagged = detect_mistakes(recon)
         econ = estimate_economy(rec.ops, player=rec.me["number"], gaia_list=rec.gaia_objects, recon=recon)
+        # economy is injected so the floating-resources / over-collecting detectors can read the
+        # worker-allocation + spending shares (heuristic mid-game intent-vs-spend gap).
+        flagged = detect_mistakes(recon, economy=econ)
         out = coach(
             metrics,
             salient_log,

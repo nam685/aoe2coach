@@ -81,6 +81,63 @@ def long_vil_gap(recon, params):
     )
 
 
+# --------------------------------------------------------------------------- floating (economy #2)
+def floating_resources(recon, _params):
+    """A resource floating in MID-GAME: gathering intent (worker share) outruns spending share.
+
+    HEURISTIC (not a bank total): reads economy.resource_balance.floating.flags — the mid-game gap
+    between worker-allocation share and near-exact spending share (#2/#3). Fires only on a MID-GAME
+    flag (end-game float is normal and never flagged by the producer). Never fabricates a number; the
+    flag itself carries only the two shares + their gap. Returns None if no flag (honest no-signal).
+    """
+    rb = recon.get("economy", {}).get("resource_balance", {})
+    floating = rb.get("floating") if isinstance(rb, dict) else None
+    if not isinstance(floating, dict):
+        return None
+    flags = floating.get("flags") or []
+    if not flags:
+        return None
+    top = flags[0]
+    return Detection(
+        observed={
+            "floating": [
+                {
+                    "resource": f.get("resource"),
+                    "worker_share": f.get("worker_share"),
+                    "spend_share": f.get("spend_share"),
+                }
+                for f in flags
+            ],
+            "estimate": True,
+        },
+        magnitude=_clamp01(float(_num(top.get("excess")) or 0.0) / 0.5),
+    )
+
+
+def over_collecting_one_res(recon, params):
+    """Eco skewed too far onto ONE resource: that resource's mid-game worker share exceeds a ceiling.
+
+    HEURISTIC (estimate): reads economy.worker_allocation.mid_game_share — the gathering-intent share
+    per resource. Fires when any single resource's worker share exceeds `max_share` (default 0.6),
+    i.e. most villagers piled on one resource mid-game while others starve. Never fires on absent /
+    empty shares. Labeled estimate downstream via the entry's confidence_tier.
+    """
+    wa = recon.get("economy", {}).get("worker_allocation", {})
+    shares = wa.get("mid_game_share") if isinstance(wa, dict) else None
+    if not isinstance(shares, dict) or not shares:
+        return None
+    max_share = float(params.get("max_share", 0.6))
+    over = [(r, _num(s)) for r, s in shares.items() if _num(s) is not None and _num(s) > max_share]
+    if not over:
+        return None
+    over.sort(key=lambda x: -x[1])
+    res, share = over[0]
+    return Detection(
+        observed={"resource": res, "worker_share": round(share, 3), "max_share": max_share, "estimate": True},
+        magnitude=_clamp01((share - max_share) / max(1.0 - max_share, 1e-6)),
+    )
+
+
 # ------------------------------------------------------------------------------ uptimes
 def _slow_age(recon, params, age, build_target=None):
     """Shared logic: flag if `ages.<age>_arrival_s` exceeds a target band's upper edge.

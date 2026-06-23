@@ -185,6 +185,24 @@ def test_coach_system_v2_contract():
     assert "ARRIVAL" in s
 
 
+def test_coach_system_v2_forbids_meta_preamble():
+    """The final report must read as a seamless human-written coaching report — no AI self-reference,
+    no tool/process narration, no meta-preamble. The prompt must explicitly forbid these."""
+    s = COACH_SYSTEM_V2.lower()
+    # explicitly names the forbidden meta-preamble patterns
+    assert "now i have all the data" in s
+    assert "here is the report" in s
+    # forbids AI self-reference and process/tool narration
+    assert "ai self-reference" in s
+    assert "tool narration" in s
+    # forbids citing the input filenames in the deliverable
+    assert "never to the input filename" in s
+    # the report must start at the section header, nothing before it
+    assert 'the first characters of your output must be the "what happened"' in s
+    # framed as a seamless human-written deliverable
+    assert "seamless" in s and "human-written coaching report" in s
+
+
 def test_task_md_points_at_inputs():
     with build_workspace(make_recon_dict()) as ws:
         task = (Path(ws) / "TASK.md").read_text()
