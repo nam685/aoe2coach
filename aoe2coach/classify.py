@@ -203,16 +203,19 @@ def _score_build(snap: _Snapshot, bo: BuildOrder) -> tuple[float, list[str], lis
         observed = snap.first_military_unit or "none"
         missed.append(f"first unit {observed} not in {sorted(accept_units)}")
 
-    # w_bld: first military building in the build's expected set (computed before w_def, since the
-    # generic-defining credit is gated on the build being structurally on-track).
+    # w_bld: the build's DEFINING military building must have been BUILT (presence), not built FIRST.
+    # A Barracks is the AoE2 prerequisite for a Stable / Archery Range, so the *first* military
+    # building is almost always a Barracks even in a scout or archer opening — penalising that is
+    # wrong. What distinguishes the build is whether the Stable / Range / etc. was actually placed.
     expected_blds = set(sig.first_military_buildings)
-    bld_observed = snap.first_military_building is not None
-    bld_matched = bld_observed and snap.first_military_building in expected_blds
+    bld_observed = bool(snap.early_buildings)
+    built = expected_blds & snap.early_buildings
+    bld_matched = bool(built)
     if bld_matched:
         score += W_BLD
-        matched.append(f"first mil building={snap.first_military_building}")
+        matched.append(f"built {sorted(built)}")
     elif expected_blds and bld_observed:
-        missed.append(f"first mil building {snap.first_military_building} not in {sorted(expected_blds)}")
+        missed.append(f"no {sorted(expected_blds)} built (military: {snap.first_military_building or 'none'})")
 
     # w_def: defining_units all present (partial credit by fraction present).
     defining = {const.unit_class(u) for u in sig.defining_units}

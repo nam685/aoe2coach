@@ -3,6 +3,18 @@ Source: aoe2techtree community data. Fallbacks return "#<id>" so unknown ids nev
 
 VILLAGER_ID = 83
 
+# Every player starts with pre-placed villagers that never appear as a train/DE_QUEUE command,
+# so any count derived from the command log must add these. Standard RM start is 3; Chinese start
+# with 3 extra (6 total). (Empire Wars / Sudden Death / nomad differ but are out of scope here.)
+STARTING_VILLAGERS_DEFAULT = 3
+STARTING_VILLAGERS_BY_CIV = {"Chinese": 6}
+
+
+def starting_villagers(civ_name):
+    """Pre-placed villagers at game start for `civ_name` (defaults to 3)."""
+    return STARTING_VILLAGERS_BY_CIV.get(civ_name, STARTING_VILLAGERS_DEFAULT)
+
+
 AGE_TECHS = {101: "Feudal Age", 102: "Castle Age", 103: "Imperial Age"}
 
 # Economy upgrades we surface timing for (tech_id -> name).

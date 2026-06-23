@@ -12,7 +12,7 @@ fields already surfaced on ParsedRec (gaia_objects, start_positions, map_dim). N
 from collections import defaultdict
 from dataclasses import asdict, dataclass, field
 
-from . import combat, efficiency, population, spatial
+from . import combat, const, efficiency, population, spatial
 from .metrics import production_milestones
 from .timeline import AGE_RESEARCH_MS, build_timeline
 
@@ -59,31 +59,35 @@ def _techs(tl):
     }
 
 
-def _counts(tl_me):
-    """`produced` counts (cumulative queued) — an upper bound on live counts. LABELED produced."""
+def _counts(tl_me, starting_vils):
+    """Villager + army counts. Villagers = starting (pre-placed, never queued) + queued, so the
+    total reflects the real population (still an upper bound on live — deaths aren't logged).
+    Army is `produced` (cumulative queued) only."""
     army = defaultdict(int)
-    villagers = 0
+    queued_vils = 0
     for u in tl_me["units"]:
         if u["unit_id"] == 83:  # const.VILLAGER_ID
-            villagers += u["amount"]
+            queued_vils += u["amount"]
         else:
             army[u["name"]] += u["amount"]
     return {
-        "villagers_produced": villagers,
+        "villagers_produced": starting_vils + queued_vils,
         "army_produced": [{"name": n, "amount": a} for n, a in sorted(army.items(), key=lambda x: -x[1])],
     }
 
 
-def _vils_at_feudal_click(tl_me):
-    """Villagers PRODUCED (queued) by the Feudal *click* time — #3's build-classifier key signal.
+def _vils_at_feudal_click(tl_me, starting_vils):
+    """Total villagers at the Feudal *click* time — #3's build-classifier key signal.
 
-    Counts villager DE_QUEUE amounts at or before the feudal click ms. None if no feudal click.
-    Labeled `produced` semantics (queued, upper bound), exposed as a named int for #3.
+    Starting (pre-placed) villagers + villager DE_QUEUE amounts at or before the feudal click ms.
+    Build-order targets (e.g. Hera's "19 vils") count total population, so the starting villagers
+    MUST be included. None if no feudal click.
     """
     click_ms = tl_me["uptimes"]["feudal"]
     if click_ms is None:
         return None
-    return sum(u["amount"] for u in tl_me["units"] if u["unit_id"] == 83 and u["t"] <= click_ms)
+    queued = sum(u["amount"] for u in tl_me["units"] if u["unit_id"] == 83 and u["t"] <= click_ms)
+    return starting_vils + queued
 
 
 def reconstruct(rec):
@@ -96,6 +100,7 @@ def reconstruct(rec):
 
     tl_me = build_timeline(ops, me_num) if me_num is not None else build_timeline([], -1)
     tl_opp = build_timeline(ops, opp_num) if opp_num is not None else None
+    starting_vils = const.starting_villagers(rec.me["civ_name"] if rec.me else None)
 
     # --- meta ---
     meta = {
@@ -137,12 +142,12 @@ def reconstruct(rec):
             "first_treb_s": milestones_me["first_treb_s"],
             "first_unit_s": milestones_me["first_unit_s"],
         },
-        # #3 build-classifier key signal: villagers produced by the Feudal CLICK.
-        "vils_at_feudal_click": _vils_at_feudal_click(tl_me),
+        # #3 build-classifier key signal: total villagers (starting + queued) at the Feudal CLICK.
+        "vils_at_feudal_click": _vils_at_feudal_click(tl_me, starting_vils),
     }
 
-    # --- counts (LABELED produced) ---
-    counts = _counts(tl_me)
+    # --- counts (villagers = starting + queued; army = produced) ---
+    counts = _counts(tl_me, starting_vils)
 
     # --- spatial (ME full + OPP centroid & key buildings) ---
     me_blds = spatial.buildings(ops, me_num) if me_num is not None else []
