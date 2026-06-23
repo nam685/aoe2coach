@@ -93,7 +93,7 @@ def precap_cutoff_s(sim, produced_units, duration_s, pop_cap=POP_CAP):
     return max(last_vil, duration_s) if last_vil else duration_s
 
 
-def tc_idle(ops, player, threshold_s=IDLE_GAP_THRESHOLD_S, precap_s=None):
+def tc_idle(ops, player, threshold_s=IDLE_GAP_THRESHOLD_S, precap_s=None, age_windows=None):
     """Villager-production idle from gaps between consecutive villager DE_QUEUE commands.
 
     Returns:
@@ -113,6 +113,12 @@ def tc_idle(ops, player, threshold_s=IDLE_GAP_THRESHOLD_S, precap_s=None):
     player's estimated pop reaches the cap (from `precap_cutoff_s`); when given, `tc_idle_s` sums only
     the over-threshold idle that occurred BEFORE it. A gap straddling the cutoff is clipped at it.
     Longest-gap / windows are reported over the whole game as before (context, not the headline).
+
+    AGE-UP IS NOT IDLE (Nam): an age advance sits in the TC's OWN production queue, so the TC
+    physically cannot make villagers while it loads (Feudal ~130s / Castle ~160s / Imperial ~190s).
+    `age_windows` is a list of [start_s, end_s] research spans; their overlap with each villager gap
+    is subtracted before the over-threshold idle is measured, so Castle-click loading is not billed
+    as idle.
     """
     times = sorted(
         t
@@ -133,6 +139,7 @@ def tc_idle(ops, player, threshold_s=IDLE_GAP_THRESHOLD_S, precap_s=None):
     # late-game (post-200-pop) TC quiet is excluded and a straddling gap is counted only up to cutoff.
     if precap_s is None:
         precap_s = times[-1] // 1000 if times else 0
+    age_windows = age_windows or []
     idle = 0
     for k in range(1, len(times)):
         start_s = times[k - 1] // 1000
@@ -140,7 +147,14 @@ def tc_idle(ops, player, threshold_s=IDLE_GAP_THRESHOLD_S, precap_s=None):
         clipped_end = min(end_s, precap_s)
         if clipped_end <= start_s:
             continue  # gap starts at/after the cap -> intentional quiet, not idle
-        idle += max(0, (clipped_end - start_s) - threshold_s)
+        # An age advance occupies the TC, so subtract its overlap with this gap — that's advancing,
+        # not idling (fixes the Castle-click-loading-counted-as-idle bug).
+        busy = 0
+        for a_start, a_end in age_windows:
+            overlap = min(clipped_end, a_end) - max(start_s, a_start)
+            if overlap > 0:
+                busy += overlap
+        idle += max(0, (clipped_end - start_s) - busy - threshold_s)
 
     return {
         "tc_idle_s": idle,

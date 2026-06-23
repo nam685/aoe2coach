@@ -209,7 +209,13 @@ def reconstruct(rec):
     # army produced (an over-estimate -> safe early cutoff).
     if me_num is not None:
         precap_s = efficiency.precap_cutoff_s(vil_sim, production["produced_units"], duration_ms // 1000)
-        eff = efficiency.tc_idle(ops, me_num, precap_s=precap_s)
+        # Age-up research occupies the TC (can't make villagers while loading) — exclude those spans.
+        age_windows = [
+            [me_ages[f"{age}_click_s"], me_ages[f"{age}_click_s"] + AGE_RESEARCH_MS[age] // 1000]
+            for age in _AGE_KEYS
+            if me_ages.get(f"{age}_click_s") is not None
+        ]
+        eff = efficiency.tc_idle(ops, me_num, precap_s=precap_s, age_windows=age_windows)
     else:
         eff = {
             "tc_idle_s": 0,
