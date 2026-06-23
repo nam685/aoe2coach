@@ -11,7 +11,7 @@ detector:
   fn: slow_feudal
   inputs: [ages.feudal_arrival_s]
   params:
-    # Generic per-pop band upper edge (AoE Library) used when no confident build match is available.
+    # Generic per-pop band upper edge (AoE Companion build guides) used when no confident build match is available.
     # When #3 passes a build_target, the detector judges against THAT build's band instead.
     generic_max_s: 720
   condition: "feudal_arrival_s > (build_target.feudal.max_s or generic_max_s)"
@@ -24,5 +24,5 @@ source:
   ref: "aoe-library-perfect-uptimes"
   detail: "Per-pop uptime band; standard Feudal lands ~9:00-11:00 on open maps"
   study:
-    url: "https://aoe-library.com/perfect-uptimes/"
-    title: "AoE Library — Perfect Uptimes (Feudal targets per pop)"
+    url: "https://aoecompanion.com/build-guides"
+    title: "AoE Companion — Build Guides (Feudal targets per pop)"
