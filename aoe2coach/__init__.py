@@ -1,6 +1,6 @@
 """Standalone AoE2 DE 1v1 coach core. Shared by nam-website prod + elluminate eval."""
 
-from . import buildorders, combat, const, econ, efficiency, gaia, mistakes, population, rates, spatial
+from . import buildorders, combat, const, econ, efficiency, gaia, mistakes, population, production, rates, spatial
 from .classify import Candidate, ClassificationResult, classify
 from .coach import (
     BENCHMARKS,
@@ -14,11 +14,12 @@ from .coach import (
     run_claude_coach,
 )
 from .econ import (
-    assignment_events,
+    active_farms,
     collected_estimate,
-    eco_split_at_ages,
-    eco_split_steps,
     estimate_economy,
+    gather_focus_events,
+    resolve_gather_resource,
+    worker_split_at_ages,
 )
 from .entrypoint import analyze_replay
 from .metrics import compute_metrics, first_military_building, production_milestones
@@ -41,13 +42,15 @@ __all__ = [
     "mistakes",
     "detect_mistakes",
     "population",
+    "production",
     "rates",
     "spatial",
-    "assignment_events",
+    "active_farms",
     "collected_estimate",
-    "eco_split_at_ages",
-    "eco_split_steps",
     "estimate_economy",
+    "gather_focus_events",
+    "resolve_gather_resource",
+    "worker_split_at_ages",
     "BENCHMARKS",
     "COACH_SYSTEM_V2",
     "CoachOutput",

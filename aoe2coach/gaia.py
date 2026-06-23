@@ -57,6 +57,46 @@ def by_object_id(gaia_list):
     return out
 
 
+def resource_points(gaia_list):
+    """List of (resource, x, y) for every GAIA object that classifies to a resource.
+
+    Used by the #2 economy model to resolve a gather-point x/y to the nearest resource (villagers are
+    gather-pointed to a Lumber/Mining camp near trees/mines, not re-clicked onto the resource itself).
+    Skips objects with no position. Returns [] on bad input; never raises.
+    """
+    if not isinstance(gaia_list, list):
+        return []
+    out = []
+    for o in gaia_list:
+        if not isinstance(o, dict):
+            continue
+        rc = resource_class(o)
+        if rc is None:
+            continue
+        pos = o.get("position")
+        if isinstance(pos, dict) and "x" in pos and "y" in pos:
+            out.append((rc, pos["x"], pos["y"]))
+    return out
+
+
+def nearest_resource(resource_points_list, x, y, classes=None):
+    """Nearest resource to (x, y) among `resource_points_list` (from resource_points()).
+
+    Returns (resource, distance). `classes`, if given, restricts to those resource families (e.g.
+    {"gold","stone"} for a Mining Camp). Returns (None, inf) if no candidate. Never raises.
+    """
+    best = None
+    best_d2 = float("inf")
+    for rc, ox, oy in resource_points_list:
+        if classes is not None and rc not in classes:
+            continue
+        d2 = (ox - x) ** 2 + (oy - y) ** 2
+        if d2 < best_d2:
+            best_d2 = d2
+            best = rc
+    return best, (best_d2**0.5 if best is not None else float("inf"))
+
+
 def resource_class(gaia_obj):
     """Classify a GAIA object to "food"|"wood"|"gold"|"stone" or None (not a gatherable resource).
 

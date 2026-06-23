@@ -4,6 +4,12 @@ Synthetic ops are (t_ms, Action, data) tuples faithful to mgz.fast.parse_action 
 gaia objects mirror header["players"][0]["objects"] entries {class_id, object_id, instance_id,
 position, index}. The honesty rule is under test: every collected number carries estimate/confidence/
 [low,high], and the model SELF-SUPPRESSES (returns None) when out of the validation band.
+
+The REWORKED attribution model (2026-06): gather points resolve a resource via (1) dropoff building
+id (Lumber Camp→wood, Mining Camp→gold/stone by nearest mine, Mill/TC/Farm→food), (2) target_type as
+a GAIA object_id, then (3) the nearest GAIA resource to the gather x/y. Newly-popped villagers (from
+the #1 production simulation) are attributed to the trailing-window gather-point distribution, so the
+per-age worker split shows meaningful WOOD (the old model under-signaled wood → ~100% food).
 """
 
 import os
@@ -77,6 +83,58 @@ def test_resource_class_decoration_and_relic_and_unknown_are_none():
     assert gaia.resource_class({}) is None
 
 
+# ----------------------------------------------------------- nearest_resource + dropoff resolution
+def test_nearest_resource_picks_closest_gaia():
+    res = gaia.resource_points(_gaia_objs())
+    # near the tree at (50,50)
+    r, d = gaia.nearest_resource(res, 50.5, 50.5)
+    assert r == "wood" and d < 1.0
+    # restricted to gold/stone near the gold mine
+    r2, _ = gaia.nearest_resource(res, 55.2, 55.1, classes={"gold", "stone"})
+    assert r2 == "gold"
+
+
+def test_nearest_resource_empty_table_returns_none():
+    assert gaia.nearest_resource([], 1.0, 2.0) == (None, float("inf"))
+
+
+# ------------------------------------------------------------------------- resolve_gather_resource
+def test_resolve_gather_resource_dropoff_building_ids():
+    res = gaia.resource_points(_gaia_objs())
+    by_objid = gaia.by_object_id(_gaia_objs())
+    # Lumber Camp (562) target_type -> wood regardless of x/y
+    assert econ.resolve_gather_resource({"target_type": 562, "x": 0.0, "y": 0.0}, by_objid, res) == "wood"
+    # Mill (68) -> food
+    assert econ.resolve_gather_resource({"target_type": 68, "x": 0.0, "y": 0.0}, by_objid, res) == "food"
+    # Town Center (621) -> food
+    assert econ.resolve_gather_resource({"target_type": 621, "x": 0.0, "y": 0.0}, by_objid, res) == "food"
+    # Mining Camp (584) -> nearest gold/stone mine: place near the gold mine (55,55)
+    assert econ.resolve_gather_resource({"target_type": 584, "x": 55.0, "y": 55.0}, by_objid, res) == "gold"
+
+
+def test_resolve_gather_resource_gaia_objectid_then_nearest():
+    res = gaia.resource_points(_gaia_objs())
+    by_objid = gaia.by_object_id(_gaia_objs())
+    # target_type is a GAIA object_id (66 = gold mine) -> gold
+    assert econ.resolve_gather_resource({"target_type": 66, "x": 0.0, "y": 0.0}, by_objid, res) == "gold"
+    # target_type -1 (bare ground) but x/y sits on the tree -> nearest -> wood (vils gather-pointed to LC)
+    assert econ.resolve_gather_resource({"target_type": -1, "x": 50.0, "y": 50.0}, by_objid, res) == "wood"
+    # target_type -1 far from any resource -> None (a MOVE, not a gather; never fabricate)
+    assert econ.resolve_gather_resource({"target_type": -1, "x": 5.0, "y": 5.0}, by_objid, res) is None
+
+
+# ----------------------------------------------------------- active_farms (dedup reseeds)
+def test_active_farms_dedup_reseeds_on_same_tile():
+    ops = [
+        (10_000, Action.BUILD, {"player_id": 1, "building_id": 50, "x": 30.0, "y": 30.0}),  # farm A
+        (20_000, Action.BUILD, {"player_id": 1, "building_id": 50, "x": 31.0, "y": 31.0}),  # farm B
+        (900_000, Action.BUILD, {"player_id": 1, "building_id": 50, "x": 30.0, "y": 30.0}),  # RESEED of A
+        (910_000, Action.BUILD, {"player_id": 2, "building_id": 50, "x": 30.0, "y": 30.0}),  # opp -> ignored
+    ]
+    # two distinct farm tiles for player 1 (the reseed of A does not inflate the count)
+    assert econ.active_farms(ops, player=1) == 2
+
+
 # ----------------------------------------------------------------------------- rates
 def _recon_with_eco(eco_techs):
     return {"techs": {"eco": eco_techs}}
@@ -115,92 +173,53 @@ def test_rate_at_stacks_multiplicatively():
     assert rates.rate_at("wood", 1200, recon) == pytest.approx(expected)
 
 
-# ------------------------------------------------------------------------- assignment_events
+# ------------------------------------------------------------------------- gather_focus_events
 def _assign_ops(me=1):
-    # GATHER_POINT with resolvable target_type (=gaia object_id); one with target_type -1 (dropped);
-    # ORDER with target_id (joined via instance_id); one ORDER onto a building (dropped);
-    # one onto decoration (dropped). object_ids length = n_vils moved.
+    # GATHER_POINT onto a Lumber Camp (562) -> wood; a gold mine gaia objectid (66) -> gold;
+    # a bare-ground -1 that sits on the tree (nearest -> wood); a -1 far from anything (dropped);
+    # an opponent gather point (dropped).
     return [
-        (10_000, Action.GATHER_POINT, {"player_id": me, "target_id": 104, "target_type": 66, "object_ids": [1, 2]}),
-        (20_000, Action.GATHER_POINT, {"player_id": me, "target_id": 0, "target_type": -1, "object_ids": [9]}),  # drop
-        (30_000, Action.ORDER, {"player_id": me, "target_id": 100, "object_ids": [3, 4, 5]}),  # tree -> wood, 3 vils
-        (40_000, Action.ORDER, {"player_id": me, "target_id": 103, "object_ids": [6]}),  # berries -> food
-        (50_000, Action.ORDER, {"player_id": me, "target_id": 106, "object_ids": [7]}),  # decoration -> drop
-        (60_000, Action.ORDER, {"player_id": me, "target_id": 999, "object_ids": [8]}),  # no gaia join -> drop
-        (70_000, Action.ORDER, {"player_id": 2, "target_id": 100, "object_ids": [1]}),  # opp -> drop
+        (10_000, Action.GATHER_POINT, {"player_id": me, "target_type": 562, "x": 0.0, "y": 0.0, "object_ids": [9]}),
+        (20_000, Action.GATHER_POINT, {"player_id": me, "target_type": 66, "x": 0.0, "y": 0.0, "object_ids": [9]}),
+        (30_000, Action.GATHER_POINT, {"player_id": me, "target_type": -1, "x": 50.0, "y": 50.0, "object_ids": [9]}),
+        (40_000, Action.GATHER_POINT, {"player_id": me, "target_type": -1, "x": 5.0, "y": 5.0, "object_ids": [9]}),
+        (50_000, Action.GATHER_POINT, {"player_id": 2, "target_type": 562, "x": 0.0, "y": 0.0, "object_ids": [9]}),
     ]
 
 
-def test_assignment_events_fuses_and_classifies():
-    g = gaia.gaia_objects(_gaia_objs())
+def test_gather_focus_events_resolve_and_classify():
+    res = gaia.resource_points(_gaia_objs())
     by_objid = gaia.by_object_id(_gaia_objs())
-    evs = econ.assignment_events(_assign_ops(), player=1, gaia_by_inst=g, gaia_by_objid=by_objid)
-    # the -1 gather-point, the decoration, the unjoinable, and the opp order are all dropped.
-    assert [(e["t_s"], e["resource"], e["n_vils"]) for e in evs] == [
-        (10, "gold", 2),
-        (30, "wood", 3),
-        (40, "food", 1),
+    evs = econ.gather_focus_events(_assign_ops(), player=1, gaia_by_objid=by_objid, resource_points=res)
+    assert [(e["t_s"], e["resource"]) for e in evs] == [(10, "wood"), (20, "gold"), (30, "wood")]
+
+
+# ------------------------------------------------------------------- worker_split_at_ages
+def test_worker_split_shows_meaningful_wood_not_all_food():
+    # Synthetic: villagers pop steadily; gather focus alternates wood/food before feudal.
+    focus = [
+        {"t_s": 30, "resource": "food"},
+        {"t_s": 60, "resource": "wood"},
+        {"t_s": 90, "resource": "wood"},
+        {"t_s": 120, "resource": "food"},
+        {"t_s": 150, "resource": "wood"},
     ]
+    pop_times = [25 * i for i in range(1, 12)]  # 25..275
+    ages = {"feudal_arrival_s": 200, "castle_arrival_s": None, "imperial_arrival_s": None}
+    split = econ.worker_split_at_ages(focus, pop_times, starting=3, ages=ages)
+    feud = split["feudal"]
+    assert feud is not None
+    # wood share is meaningful (not ~0), food is not ~100%
+    assert feud["shares"]["wood"] > 0.2
+    assert feud["shares"]["food"] < 0.9
+    # shares normalize to ~1
+    assert abs(sum(feud["shares"].values()) - 1.0) < 0.01
+    assert split["castle"] is None  # age not reached
 
 
-def test_assignment_events_empty_when_no_gaia():
-    evs = econ.assignment_events(_assign_ops(), player=1, gaia_by_inst={}, gaia_by_objid={})
-    assert evs == []  # nothing joins -> no fabricated events
-
-
-# ----------------------------------------------------------------------- eco_split_steps
-def test_eco_split_steps_holds_constant_between_events():
-    events = [
-        {"t_s": 100, "resource": "wood", "n_vils": 3},
-        {"t_s": 200, "resource": "food", "n_vils": 2},
-    ]
-    steps = econ.eco_split_steps(events)
-    # after first event: 100% wood; after second: wood 3 / food 2 of total 5
-    assert steps[0]["t_s"] == 100
-    assert steps[0]["alloc"]["wood"] == 3 and steps[0]["alloc"].get("food", 0) == 0
-    assert steps[1]["t_s"] == 200
-    assert steps[1]["alloc"]["wood"] == 3 and steps[1]["alloc"]["food"] == 2
-    assert steps[1]["confidence"] == 2  # cumulative event count
-
-
-def test_eco_split_steps_empty():
-    assert econ.eco_split_steps([]) == []
-
-
-# --------------------------------------------------------------------- eco_split_at_ages
-def test_eco_split_at_ages_snapshots_shares():
-    events = [
-        {"t_s": 100, "resource": "wood", "n_vils": 6},
-        {"t_s": 150, "resource": "food", "n_vils": 4},
-        {"t_s": 400, "resource": "gold", "n_vils": 2},  # after castle
-    ]
-    steps = econ.eco_split_steps(events)
-    ages = {"feudal_arrival_s": 200, "castle_arrival_s": 500, "imperial_arrival_s": None}
-    snaps = econ.eco_split_at_ages(steps, ages)
-    feud = snaps["feudal"]
-    # at t=200: wood 6 / food 4 -> 60% / 40%, n_events=2
-    assert feud["estimate"] is True
-    assert feud["n_events"] == 2
-    assert feud["shares"]["wood"] == pytest.approx(0.6)
-    assert feud["shares"]["food"] == pytest.approx(0.4)
-    castle = snaps["castle"]
-    assert castle["n_events"] == 3  # gold event now included
-    assert snaps["imperial"] is None  # age not reached
-
-
-# ------------------------------------------------------------------- collected_estimate
+# ------------------------------------------------------------------- collected_estimate (band/labels)
 def test_collected_estimate_carries_band_and_labels():
-    # craft steps so the integral lands in a plausible range; check shape, not exact numbers.
-    events = [
-        {"t_s": 10, "resource": "wood", "n_vils": 10},
-        {"t_s": 10, "resource": "food", "n_vils": 10},
-        {"t_s": 10, "resource": "gold", "n_vils": 5},
-        {"t_s": 10, "resource": "stone", "n_vils": 2},
-    ]
-    steps = econ.eco_split_steps(events)
-    recon = {"techs": {"eco": []}, "meta": {"duration_s": 3000}}
-    out = econ.collected_estimate(steps, recon)
-    # out may be a dict of per-resource bands, OR None if suppressed; either is valid shape-wise.
+    out = econ.collected_estimate({"food": 20, "wood": 18, "gold": 6, "stone": 2})
     if out is not None:
         for res in ("wood", "food", "gold", "stone"):
             if res in out and out[res] is not None:
@@ -210,10 +229,8 @@ def test_collected_estimate_carries_band_and_labels():
 
 
 def test_collected_estimate_suppresses_when_no_signal():
-    # zero events -> cannot honestly estimate anything -> None (suppressed), never a bare 0.
-    steps = econ.eco_split_steps([])
-    recon = {"techs": {"eco": []}, "meta": {"duration_s": 3000}}
-    assert econ.collected_estimate(steps, recon) is None
+    # zero worker-seconds -> cannot honestly estimate anything -> None (suppressed), never a bare 0.
+    assert econ.collected_estimate({}) is None
 
 
 # ------------------------------------------------------------------- full estimate_economy
@@ -223,32 +240,50 @@ def test_estimate_economy_assembles_and_is_json_serializable():
     recon = {
         "techs": {"eco": [{"name": "Double-Bit Axe", "t_s": 600}]},
         "ages": {"feudal_arrival_s": 200, "castle_arrival_s": 800, "imperial_arrival_s": None},
-        "meta": {"duration_s": 3000},
+        "meta": {"duration_s": 3000, "my_civ": "Britons"},
     }
-    out = econ.estimate_economy(_assign_ops(), player=1, gaia_list=_gaia_objs(), recon=recon)
+    ops = _assign_ops() + [
+        (i * 25_000, Action.DE_QUEUE, {"player_id": 1, "unit_id": 83, "amount": 1}) for i in range(20)
+    ]
+    out = econ.estimate_economy(ops, player=1, gaia_list=_gaia_objs(), recon=recon)
     assert out["estimate"] is True
-    assert "eco_split_at_ages" in out
+    assert "worker_split_at_ages" in out
     assert "collected" in out  # may be a band dict or None (suppressed)
-    assert "n_assignment_events" in out
     assert "qualitative" in out  # narrative shape always present
     json.dumps(out)  # must serialize
 
 
 # ------------------------------------------------------------------------ FIDELITY / real rec
 @requires_rec
-def test_real_rec_assignment_events_count_and_classes():
+def test_real_rec_gather_focus_resolves_wood():
     from aoe2coach.parser import parse_rec
 
     rec = parse_rec(REC_PATH, RELIC_PROFILE_ID)
-    g = gaia.gaia_objects(rec.gaia_objects)
+    res = gaia.resource_points(rec.gaia_objects)
     by_objid = gaia.by_object_id(rec.gaia_objects)
-    evs = econ.assignment_events(rec.ops, player=rec.me["number"], gaia_by_inst=g, gaia_by_objid=by_objid)
-    # Genuine resource-assignment events for ME (spec's ~108 was pre-decoration-filter; the honest,
-    # decoration-excluded count is in the dozens). Not all-None: resources resolve.
-    assert len(evs) >= 20
-    resources = {e["resource"] for e in evs}
-    assert resources <= {"wood", "food", "gold", "stone"}
-    assert resources  # at least one resolved
+    evs = econ.gather_focus_events(rec.ops, player=rec.me["number"], gaia_by_objid=by_objid, resource_points=res)
+    assert len(evs) >= 40
+    from collections import Counter
+
+    c = Counter(e["resource"] for e in evs)
+    # The OLD model resolved ~0 wood (vils gather-pointed to a lumber camp, never re-clicked on trees).
+    # The reworked model MUST resolve substantial wood.
+    assert c["wood"] >= 30, f"wood gather points should dominate, got {c}"
+
+
+@requires_rec
+def test_real_rec_feudal_split_has_meaningful_wood():
+    """The reworked split must NOT be ~100% food in feudal — wood (and usually gold) are present."""
+    from aoe2coach.parser import parse_rec
+    from aoe2coach.reconstruct import reconstruct
+
+    rec = parse_rec(REC_PATH, RELIC_PROFILE_ID)
+    recon = reconstruct(rec).to_dict()
+    out = econ.estimate_economy(rec.ops, player=rec.me["number"], gaia_list=rec.gaia_objects, recon=recon)
+    feud = out["worker_split_at_ages"]["feudal"]
+    assert feud is not None
+    assert feud["shares"].get("wood", 0) >= 0.1, f"feudal wood share too low: {feud['shares']}"
+    assert feud["shares"].get("food", 1.0) <= 0.9, f"feudal still ~all food: {feud['shares']}"
 
 
 @requires_rec
@@ -264,10 +299,8 @@ def test_real_rec_collected_estimate_in_band_or_suppressed():
     collected = out["collected"]
     truth_total = 63808
     if collected is None:
-        # suppressed entirely -> the honest fallback fired. PASS.
-        assert out["qualitative"] is not None
+        assert out["qualitative"] is not None  # suppressed -> honest fallback fired. PASS.
     else:
-        # if a total survived, it must be within the band; otherwise the model should have suppressed.
         total = sum(b["value"] for b in collected.values() if b is not None)
         assert abs(total - truth_total) / truth_total <= 0.10
 
@@ -284,3 +317,12 @@ def test_real_rec2_runs_and_serializes():
     out = econ.estimate_economy(rec.ops, player=rec.me["number"], gaia_list=rec.gaia_objects, recon=recon)
     json.dumps(out)
     assert out["estimate"] is True
+    # game2 feudal also shows meaningful wood (not ~100% food).
+    feud = out["worker_split_at_ages"]["feudal"]
+    if feud is not None:
+        assert feud["shares"].get("wood", 0) >= 0.1
+
+
+# ------------------------------------------------------------------- validate_collected (measure)
+def test_validate_collected_suppressed():
+    assert econ.validate_collected(None, {"food": 1, "wood": 1, "gold": 1, "stone": 1}) == {"suppressed": True}

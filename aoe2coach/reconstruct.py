@@ -13,6 +13,7 @@ from collections import defaultdict
 from dataclasses import asdict, dataclass, field
 
 from . import combat, const, efficiency, population, spatial
+from . import production as production_mod
 from .metrics import production_milestones
 from .timeline import AGE_RESEARCH_MS, build_timeline
 
@@ -59,35 +60,34 @@ def _techs(tl):
     }
 
 
-def _counts(tl_me, starting_vils):
-    """Villager + army counts. Villagers = starting (pre-placed, never queued) + queued, so the
-    total reflects the real population (still an upper bound on live — deaths aren't logged).
-    Army is `produced` (cumulative queued) only."""
+def _counts(tl_me, vil_sim):
+    """Villager + army counts. Villagers = the SIMULATED produced count (starting + physically-popped
+    villagers, one TC popping ~1/25s) — NOT the cumulative queued sum, which over-counts because
+    players queue ahead of what a TC can pop. Army is `produced` (cumulative queued) only.
+    """
     army = defaultdict(int)
-    queued_vils = 0
     for u in tl_me["units"]:
         if u["unit_id"] == 83:  # const.VILLAGER_ID
-            queued_vils += u["amount"]
-        else:
-            army[u["name"]] += u["amount"]
+            continue  # villagers come from the production simulation, not the queued sum
+        army[u["name"]] += u["amount"]
     return {
-        "villagers_produced": starting_vils + queued_vils,
+        "villagers_produced": vil_sim.villagers_produced(),
         "army_produced": [{"name": n, "amount": a} for n, a in sorted(army.items(), key=lambda x: -x[1])],
     }
 
 
-def _vils_at_feudal_click(tl_me, starting_vils):
-    """Total villagers at the Feudal *click* time — #3's build-classifier key signal.
+def _vils_at_feudal_click(tl_me, vil_sim):
+    """Total villagers PRESENT at the Feudal *click* time — #3's build-classifier key signal.
 
-    Starting (pre-placed) villagers + villager DE_QUEUE amounts at or before the feudal click ms.
-    Build-order targets (e.g. Hera's "19 vils") count total population, so the starting villagers
-    MUST be included. None if no feudal click.
+    From the production simulation: starting (pre-placed) villagers + villagers physically POPPED by
+    the feudal-click ms. NOT the queued sum (which over-counts: a single TC can only pop ~1/25s, so
+    a queued count of 23 by 7:24 is physically impossible). Build-order targets (e.g. Hera's "19
+    vils") count live population, so this is the honest signal. None if no feudal click.
     """
     click_ms = tl_me["uptimes"]["feudal"]
     if click_ms is None:
         return None
-    queued = sum(u["amount"] for u in tl_me["units"] if u["unit_id"] == 83 and u["t"] <= click_ms)
-    return starting_vils + queued
+    return vil_sim.villagers_present(click_ms // 1000)
 
 
 def reconstruct(rec):
@@ -117,8 +117,15 @@ def reconstruct(rec):
 
     # --- ages (ME) + opp ages key ---
     ages = _ages(tl_me)
+    me_ages = dict(ages)  # ME-only age arrivals, before the "opp" key is attached (sim needs this)
     if tl_opp is not None:
         ages["opp"] = _ages(tl_opp)
+
+    # --- villager production simulation (physical pops, not queued over-count) ---
+    my_civ = rec.me["civ_name"] if rec.me else None
+    vil_sim = production_mod.simulate_villagers(ops, me_num, my_civ, me_ages) if me_num is not None else None
+    if vil_sim is None:
+        vil_sim = production_mod.VillagerSim(pop_times_s=[], starting=starting_vils, tc_active_times_s=[0])
 
     # --- techs (ME) + opp key ---
     techs = _techs(tl_me)
@@ -142,12 +149,15 @@ def reconstruct(rec):
             "first_treb_s": milestones_me["first_treb_s"],
             "first_unit_s": milestones_me["first_unit_s"],
         },
-        # #3 build-classifier key signal: total villagers (starting + queued) at the Feudal CLICK.
-        "vils_at_feudal_click": _vils_at_feudal_click(tl_me, starting_vils),
+        # #3 build-classifier key signal: villagers PRESENT (simulated pops) at the Feudal CLICK.
+        "vils_at_feudal_click": _vils_at_feudal_click(tl_me, vil_sim),
+        # Villager-present time series (every 30s) + active-TC count — physical, not queued.
+        "villager_curve": vil_sim.curve(step_s=30, end_s=duration_ms // 1000),
+        "tc_active_times_s": list(vil_sim.tc_active_times_s),
     }
 
-    # --- counts (villagers = starting + queued; army = produced) ---
-    counts = _counts(tl_me, starting_vils)
+    # --- counts (villagers = simulated produced; army = produced) ---
+    counts = _counts(tl_me, vil_sim)
 
     # --- spatial (ME full + OPP centroid & key buildings) ---
     me_blds = spatial.buildings(ops, me_num) if me_num is not None else []

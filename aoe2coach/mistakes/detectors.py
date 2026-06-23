@@ -170,9 +170,10 @@ def late_or_missing_eco_up(recon, params):
 def too_few_villagers(recon, params):
     """Villager count BELOW a duration-scaled floor. Exact-direction only.
 
-    `villagers_produced` is an upper bound (queued), so a HIGH value can't prove a mistake — we only
-    flag when even the upper bound is below the floor, which is unambiguous. Never flags on a high
-    count (the calibration game's 126 produced must NOT trip this).
+    `villagers_produced` is the SIMULATED produced count (starting + physical pops); it's an upper
+    bound on live survivors (deaths unlogged), so a HIGH value can't prove a mistake — we only flag
+    when even this count is below the floor, which is unambiguous. Never flags on a high count (the
+    calibration game's ~129 produced must NOT trip this).
     """
     produced = _num(recon.get("counts", {}).get("villagers_produced"))
     duration = _num(recon.get("meta", {}).get("duration_s"))
@@ -197,8 +198,9 @@ def villager_stall_late(recon, params):
 
     - "ceased" = no villager DE_QUEUE with t_s after imperial_arrival_s (production *stopped* — an
       exact, command-derived fact: absence of a queue command).
-    - AND villagers_produced (an upper bound) is still below a floor — so even the optimistic count
-      says the eco plateaued low. Both conditions guard against false-firing on a maxed eco.
+    - AND villagers_produced (simulated produced; an upper bound on survivors) is still below a floor
+      — so even the optimistic count says the eco plateaued low. Both conditions guard against
+      false-firing on a maxed eco.
     """
     ages = recon.get("ages", {})
     imp = _num(ages.get("imperial_arrival_s"))

@@ -334,8 +334,18 @@ def test_calibration_game_plausible():
     ids = [c.build_id for c in res.candidates]
     # no fast-castle / knight build should be the top candidate for a feudal-military game
     assert res.candidates[0].build_id not in ("knight-rush", "fast-castle-generic")
-    # not falsely over-confident on this partly off-meta game
-    assert not (res.is_confident and res.candidates[0].confidence > 0.9)
+    # With the corrected villager count (~20 at feudal click, not the old queued over-count of 26),
+    # the opening signals (first unit Archer, Archery Range, feudal 9:34, vils≈19) genuinely line up
+    # with an archer feudal-rush — a confident, CORRECT label, so the top candidate is a feudal-rush
+    # archer/scout/skirm family (not an over-confident mislabel).
+    assert res.candidates[0].build_id in (
+        "scouts-into-archers",
+        "scout-rush-1-stable",
+        "korean-spear-skirm",
+        "maa-into-skirms",
+        "archers-1-range",
+        "scouts-into-cav-archers",
+    )
     # at least one scout/skirm/archer feudal-rush family in candidates
     assert any(
         i
