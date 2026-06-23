@@ -135,6 +135,27 @@ def test_active_farms_dedup_reseeds_on_same_tile():
     assert econ.active_farms(ops, player=1) == 2
 
 
+def test_active_farm_times_first_build_per_tile_sorted():
+    ops = [
+        (20_000, Action.BUILD, {"player_id": 1, "building_id": 50, "x": 31.0, "y": 31.0}),  # farm B @20
+        (10_000, Action.BUILD, {"player_id": 1, "building_id": 50, "x": 30.0, "y": 30.0}),  # farm A @10
+        (900_000, Action.BUILD, {"player_id": 1, "building_id": 50, "x": 30.0, "y": 30.0}),  # RESEED A (not new)
+        (5_000, Action.BUILD, {"player_id": 2, "building_id": 50, "x": 30.0, "y": 30.0}),  # opp -> ignored
+        (15_000, Action.BUILD, {"player_id": 1, "building_id": 12}),  # not a farm -> ignored
+    ]
+    # one FIRST-build timestamp per distinct tile, sorted ascending; reseed keeps the earliest.
+    assert econ.active_farm_times(ops, player=1) == [10, 20]
+
+
+def test_farms_by_counts_le_t():
+    times = [10, 20, 100]
+    assert econ.farms_by(times, 5) == 0
+    assert econ.farms_by(times, 10) == 1
+    assert econ.farms_by(times, 50) == 2
+    assert econ.farms_by(times, 100) == 3
+    assert econ.farms_by(times, 999) == 3
+
+
 # ----------------------------------------------------------------------------- rates
 def _recon_with_eco(eco_techs):
     return {"techs": {"eco": eco_techs}}
@@ -215,6 +236,48 @@ def test_worker_split_shows_meaningful_wood_not_all_food():
     # shares normalize to ~1
     assert abs(sum(feud["shares"].values()) - 1.0) < 0.01
     assert split["castle"] is None  # age not reached
+
+
+def test_worker_split_farms_floor_food_displacing_wood():
+    """Late-game move: villagers gather-pointed to WOOD then pulled onto FARMS (no signal emitted).
+    Farm count must FLOOR food and pull those workers OUT of wood."""
+    # Heavy wood gather intent throughout; almost no food gather points.
+    focus = [{"t_s": t, "resource": "wood"} for t in range(30, 2000, 60)]
+    focus += [{"t_s": 40, "resource": "gold"}]  # a little gold intent
+    pop_times = [25 * i for i in range(1, 80)]  # plenty of villagers
+    ages = {"feudal_arrival_s": 200, "castle_arrival_s": 800, "imperial_arrival_s": 1800}
+    # 40 active farms by imperial -> 40 food workers floored.
+    farm_times = [50 + 30 * i for i in range(40)]  # all built by ~1250s, well before imperial
+    no_anchor = econ.worker_split_at_ages(focus, pop_times, starting=3, ages=ages)
+    anchored = econ.worker_split_at_ages(focus, pop_times, starting=3, ages=ages, farm_times_s=farm_times)
+    imp_no = no_anchor["imperial"]
+    imp_yes = anchored["imperial"]
+    # Without anchor, gather intent makes food tiny and wood huge.
+    assert imp_no["shares"]["food"] < 0.1
+    # With the farm anchor, food rises sharply and wood drops.
+    assert imp_yes["alloc"].get("food", 0) >= 40
+    assert imp_yes["shares"]["food"] > imp_no["shares"]["food"] + 0.2
+    assert imp_yes["shares"]["wood"] < imp_no["shares"]["wood"]
+    # food can never exceed workers present.
+    assert imp_yes["alloc"]["food"] <= imp_yes["workers_present"]
+    # shares still normalize.
+    assert abs(sum(imp_yes["shares"].values()) - 1.0) < 0.02
+
+
+def test_worker_split_early_game_keeps_gather_food_when_no_farms():
+    """Early game (no farms yet) keeps the sheep/berry gather-intent food, not farm-driven."""
+    focus = [
+        {"t_s": 30, "resource": "food"},
+        {"t_s": 60, "resource": "food"},
+        {"t_s": 90, "resource": "wood"},
+    ]
+    pop_times = [25 * i for i in range(1, 8)]
+    ages = {"feudal_arrival_s": 200, "castle_arrival_s": None, "imperial_arrival_s": None}
+    # no farms at all by feudal
+    split = econ.worker_split_at_ages(focus, pop_times, starting=3, ages=ages, farm_times_s=[])
+    feud = split["feudal"]
+    # gather-intent food (sheep/berries) preserved, not zeroed by absent farms.
+    assert feud["shares"]["food"] > 0.4
 
 
 # ------------------------------------------------------------------- collected_estimate (band/labels)
@@ -453,3 +516,44 @@ def test_real_rec_two_blocks_wood_present_no_fabricated_totals():
     # no fabricated gathered/bank totals anywhere
     assert rb["collected"] is None and out["collected"] is None
     assert rb["relic_gold"] == "unavailable"
+
+
+@requires_rec
+def test_real_rec_imperial_is_farm_food_heavy_not_all_wood():
+    """The late-game-economy-attribution fix: game1 imperial WAS food~.18/wood~.68 (villagers
+    gather-pointed to wood then pulled onto farms, never re-signalled). The farm anchor must drive
+    food UP (farms = farmers) and wood DOWN to a realistic level."""
+    from aoe2coach.parser import parse_rec
+    from aoe2coach.reconstruct import reconstruct
+
+    rec = parse_rec(REC_PATH, RELIC_PROFILE_ID)
+    recon = reconstruct(rec).to_dict()
+    out = econ.estimate_economy(rec.ops, player=rec.me["number"], gaia_list=rec.gaia_objects, recon=recon)
+    imp = out["worker_split_at_ages"]["imperial"]
+    assert imp is not None
+    # food rises sharply once farms anchor it (was the absurd ~0.18; now a realistic ~0.32+).
+    assert imp["shares"]["food"] >= 0.3, imp["shares"]
+    # wood is no longer the absurd 0.68 — it has dropped to a realistic level.
+    assert imp["shares"]["wood"] < 0.6, imp["shares"]
+    assert imp["shares"]["wood"] < 0.675, imp["shares"]  # strictly below the buggy value
+    # food allocation is anchored at >= the active-farm count by imperial (each farm = a farmer).
+    ft = econ.active_farm_times(rec.ops, rec.me["number"])
+    fbi = econ.farms_by(ft, recon["ages"]["imperial_arrival_s"])
+    assert imp["alloc"]["food"] >= fbi, (imp["alloc"], fbi)
+
+
+@requires_rec
+def test_real_rec_floating_wood_no_longer_wildly_overflagged():
+    """With the farm-anchored worker share feeding the floating signal, wood's mid-game worker share
+    drops, so floating-wood must no longer read the absurd ~0.86 excess."""
+    from aoe2coach.parser import parse_rec
+    from aoe2coach.reconstruct import reconstruct
+
+    rec = parse_rec(REC_PATH, RELIC_PROFILE_ID)
+    recon = reconstruct(rec).to_dict()
+    out = econ.estimate_economy(rec.ops, player=rec.me["number"], gaia_list=rec.gaia_objects, recon=recon)
+    flags = {f["resource"]: f for f in out["resource_balance"]["floating"].get("flags", [])}
+    # mid-game wood worker share is no longer ~0.86 (was wildly over-flagged before the fix).
+    assert out["worker_allocation"]["mid_game_share"].get("wood", 0) < 0.6
+    if "wood" in flags:
+        assert flags["wood"]["excess"] < 0.4, flags["wood"]

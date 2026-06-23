@@ -24,6 +24,7 @@ estimated — it carries no command signal — and is labeled `unavailable`.
 Pure functions over `ops`, the parsed gaia table, and a Reconstruction dict (#1). No DB/network/IO.
 """
 
+import bisect
 from collections import Counter
 
 from mgz.fast import Action
@@ -151,11 +152,12 @@ def gather_focus_events(ops, player, gaia_by_objid, resource_points):
     return out
 
 
-def active_farms(ops, player):
-    """Number of DISTINCT farm tiles `player` built, deduping reseeds (a farm rebuilt on the ~same
-    tile is the same farm, not a new one). Late-game food workers ≈ number of active farms."""
-    tiles = set()
-    for _t, action_type, data in ops:
+def _farm_first_build_by_tile(ops, player):
+    """{(round(x), round(y)): first_build_t_s} for each DISTINCT farm tile `player` built, deduping
+    reseeds (a farm rebuilt on the ~same rounded tile is the SAME farm, keeping the earliest build).
+    Shared dedup logic for active_farms (count) and active_farm_times (timeline)."""
+    first_t = {}
+    for t, action_type, data in ops:
         if action_type != Action.BUILD or data.get("player_id") != player:
             continue
         if data.get("building_id") != _FARM_BUILDING_ID:
@@ -163,8 +165,32 @@ def active_farms(ops, player):
         x = data.get("x")
         y = data.get("y")
         if isinstance(x, (int, float)) and isinstance(y, (int, float)):
-            tiles.add((round(x), round(y)))
-    return len(tiles)
+            tile = (round(x), round(y))
+            ts = t // 1000
+            if tile not in first_t or ts < first_t[tile]:
+                first_t[tile] = ts
+    return first_t
+
+
+def active_farms(ops, player):
+    """Number of DISTINCT farm tiles `player` built, deduping reseeds (a farm rebuilt on the ~same
+    tile is the same farm, not a new one). Late-game food workers ≈ number of active farms."""
+    return len(_farm_first_build_by_tile(ops, player))
+
+
+def active_farm_times(ops, player):
+    """Sorted list of the FIRST-build time (seconds) for each DISTINCT farm tile `player` built,
+    deduping reseeds (reusing active_farms' dedup logic — a reseed on the same rounded tile is NOT a
+    new farm and keeps the earliest build time). Each farm ≈ a farmer, so this is the time-aware floor
+    on late-game FOOD workers. Pair with farms_by(t) for a bisect count of farms built by time t."""
+    return sorted(_farm_first_build_by_tile(ops, player).values())
+
+
+def farms_by(farm_times_s, t_s):
+    """Number of distinct farms first-built at or before `t_s` — bisect over the sorted
+    active_farm_times list. Each farm ≈ one food worker, so this floors the late-game food count."""
+
+    return bisect.bisect_right(farm_times_s, t_s)
 
 
 def _focus_window_dist(focus_events, t_s):
@@ -187,18 +213,59 @@ def _focus_window_dist(focus_events, t_s):
     return c
 
 
-def worker_split_at_ages(focus_events, pop_times_s, starting, ages, fishing_ops=None, player=None):
+def _farm_anchored_split(acc, present, farm_food_floor, fishing):
+    """Recompute the per-resource worker counts so ACTIVE FARMS anchor the FOOD count (each farm = a
+    farmer), displacing wood-misattributed villagers OUT of wood (the late-game bug fix).
+
+    `acc` is the raw gather-INTENT attribution (Counter of fractional worker counts, before fishing).
+    Logic:
+      - gather_food   = acc["food"] (sheep/berry/farm gather-intent food, strong early game)
+      - food          = min(present, max(gather_food, farm_food_floor) + fishing)
+                        farms FLOOR food late-game; early-game keeps the larger gather-intent food;
+                        never exceeds workers present.
+      - remaining     = present - food, split across wood/gold/stone by their gather-INTENT
+                        proportions (the non-food part of the trailing-window distribution). So pulling
+                        villagers onto farms moves them OUT of wood.
+    Returns ({resource: float count}, food_count).
+    """
+    gather_food = acc.get("food", 0.0)
+    food = min(float(present), max(gather_food, float(farm_food_floor)) + fishing)
+    food = max(food, 0.0)
+    remaining = max(present - food, 0.0)
+    # Non-food gather-intent proportions drive how the remaining workers split.
+    non_food = {r: acc.get(r, 0.0) for r in ("wood", "gold", "stone")}
+    nf_total = sum(non_food.values())
+    counts = dict.fromkeys(_RESOURCES, 0.0)
+    counts["food"] = food
+    if remaining > 0:
+        if nf_total > 0:
+            for r, v in non_food.items():
+                counts[r] = remaining * (v / nf_total)
+        else:
+            # No non-food gather intent at all -> the remaining workers default to wood (the usual
+            # un-signalled bulk economy resource), rather than vanishing.
+            counts["wood"] = remaining
+    return counts, food
+
+
+def worker_split_at_ages(focus_events, pop_times_s, starting, ages, fishing_ops=None, player=None, farm_times_s=None):
     """Estimated WORKER-on-resource split at each age boundary (the primary deliverable; unit=workers).
 
     Each villager POPPED (from the production simulation) by the age-arrival time is attributed to the
     trailing-window gather-point distribution at its pop time (fractional, to smooth the single-focus
     flip-flop). Starting villagers seed food (they begin on sheep/berries). FISHING workers (Fishing
-    Ships + Fish Traps committed by the age time) are added as FOOD workers — zero on land maps, so
-    this is a no-op there. Returns {age: {estimate, alloc:{resource: count}, shares:{resource: frac},
-    villagers_present, fishing_workers} | None}.
+    Ships + Fish Traps committed by the age time) are added as FOOD workers — zero on land maps.
 
-    `fishing_ops`/`player`: when both given, fishing food workers committed by each age time are
-    counted via fishing_food_workers and folded into the food allocation/share.
+    FARM ANCHOR (late-game-attribution fix): players SET the TC gather point to WOOD then PULL those
+    choppers off wood to spam-build FARMS — a move that emits NO "now on food" signal, so the gather
+    model wrongly leaves them on wood (game1 imperial read 68% wood). Each active farm ≈ a farmer, so
+    when `farm_times_s` (from active_farm_times) is given, FOOD is floored at the farm count built by
+    the age time: `food = min(present, max(gather_food, farms_by(t)) + fishing)`. The remaining workers
+    split across wood/gold/stone by their gather-INTENT proportions, so farms pull villagers OUT of
+    wood. Early game (few/no farms) keeps the larger sheep/berry gather-intent food.
+
+    Returns {age: {estimate, alloc:{resource: count}, shares:{resource: frac}, villagers_present,
+    fishing_workers} | None}.
     """
     out = {}
     for age in ("feudal", "castle", "imperial"):
@@ -223,12 +290,13 @@ def worker_split_at_ages(focus_events, pop_times_s, starting, ages, fishing_ops=
         fishing = (
             fishing_food_workers(fishing_ops, player, at_s=t) if (fishing_ops is not None and player is not None) else 0
         )
-        acc["food"] += fishing
         present = vils_present + fishing
-        grand = sum(acc.values())
-        # Normalize the resource shares to the physical workers-present count.
-        shares = {r: acc[r] / grand for r in acc} if grand else {}
-        alloc = {r: round(shares.get(r, 0.0) * present) for r in _RESOURCES if shares.get(r, 0.0) > 0}
+        # FARM ANCHOR: floor food on the active-farm count by this age, displacing wood.
+        farm_floor = farms_by(farm_times_s, t) if farm_times_s else 0
+        counts, _food = _farm_anchored_split(acc, present, farm_floor, fishing)
+        grand = sum(counts.values())
+        shares = {r: counts[r] / grand for r in _RESOURCES if grand} if grand else {}
+        alloc = {r: round(counts[r]) for r in _RESOURCES if counts[r] > 0}
         out[age] = {
             "estimate": True,
             "unit": "workers",
@@ -237,7 +305,7 @@ def worker_split_at_ages(focus_events, pop_times_s, starting, ages, fishing_ops=
             "workers_present": present,
             "n_attributed": attributed,
             "alloc": alloc,
-            "shares": {r: round(s, 3) for r, s in shares.items()},
+            "shares": {r: round(shares.get(r, 0.0), 3) for r in _RESOURCES if shares.get(r, 0.0) > 0},
         }
     return out
 
@@ -340,13 +408,18 @@ MIDGAME_END_FRAC = 0.80
 FLOAT_MARGIN = 0.15
 
 
-def mid_game_worker_share(focus_events, pop_times_s, starting, duration_s, fishing_ops=None, player=None):
-    """Worker SHARE per resource over the mid-game window (gathering INTENT, fractions summing ~1).
+def mid_game_worker_share(
+    focus_events, pop_times_s, starting, duration_s, fishing_ops=None, player=None, farm_times_s=None
+):
+    """Worker SHARE per resource over the mid-game window (fractions summing ~1) — the SAME
+    FARM-ANCHORED allocation as the per-age split (NOT raw gather intent), so the floating signal it
+    feeds reflects the corrected (lower) wood share.
 
-    Integrates Σ workers_on_R(t) over [MIDGAME_START_FRAC, MIDGAME_END_FRAC]·duration using the
-    trailing-window gather distribution and the simulated worker population — the same intent signal
-    as the per-age split, but averaged over the mid-game so a single flip-flop can't dominate.
-    Returns {resource: frac} or {} if no signal. Fishing adds to food intent (0 on land). Pure."""
+    Integrates Σ workers_on_R(t) over [MIDGAME_START_FRAC, MIDGAME_END_FRAC]·duration. In each window
+    the workers-present are split via the gather-INTENT distribution and then re-anchored on the
+    active-farm count (`farms_by(mid)`), exactly like worker_split_at_ages, so wood-misattributed
+    farmers move OUT of wood. Returns {resource: frac} or {} if no signal. Fishing adds to food (0 on
+    land). Pure."""
     if not duration_s:
         return {}
     start = int(duration_s * MIDGAME_START_FRAC)
@@ -358,17 +431,29 @@ def mid_game_worker_share(focus_events, pop_times_s, starting, duration_s, fishi
     t = start
     while t < end:
         mid = t + step // 2
-        present = starting + sum(1 for pt in pop_times_s if pt <= mid)
-        if fishing_ops is not None and player is not None:
-            present += fishing_food_workers(fishing_ops, player, at_s=mid)
-        wd = _focus_window_dist(focus_events, mid)
-        tot = sum(wd.values())
-        if tot and present:
-            for r, n in wd.items():
-                if r in acc:
-                    acc[r] += present * (n / tot) * step
-        elif present:
-            acc["food"] += present * step  # no gather signal -> assume food (sheep/berries)
+        vils = starting + sum(1 for pt in pop_times_s if pt <= mid)
+        fishing = (
+            fishing_food_workers(fishing_ops, player, at_s=mid)
+            if (fishing_ops is not None and player is not None)
+            else 0
+        )
+        present = vils + fishing
+        if present:
+            # Per-window gather-intent attribution, then the farm anchor (same logic as the per-age
+            # split) so this mid-game share reflects the corrected wood/food allocation.
+            window = Counter({"food": starting})  # starting vils seed food in every window
+            wd = _focus_window_dist(focus_events, mid)
+            tot = sum(wd.values())
+            attributable = vils - starting
+            if tot and attributable > 0:
+                for r, n in wd.items():
+                    window[r] += attributable * (n / tot)
+            elif attributable > 0:
+                window["food"] += attributable  # no gather signal -> assume food
+            farm_floor = farms_by(farm_times_s, mid) if farm_times_s else 0
+            counts, _food = _farm_anchored_split(window, present, farm_floor, fishing)
+            for r in _RESOURCES:
+                acc[r] += counts[r] * step
         t += step
     grand = sum(acc.values())
     if grand <= 0:
@@ -462,13 +547,18 @@ def estimate_economy(ops, player, gaia_list, recon):
 
     focus = gather_focus_events(ops, player, gaia_by_objid, resource_points)
     sim = production.simulate_villagers(ops, player, civ, ages)
-    farm_count = active_farms(ops, player)
+    farm_times = active_farm_times(ops, player)
+    farm_count = len(farm_times)
     fishing_total = fishing_food_workers(ops, player)
 
     # --- worker_allocation block (unit = workers; villager + fishing counts) ---
-    split = worker_split_at_ages(focus, sim.pop_times_s, starting, ages, fishing_ops=ops, player=player)
+    # Farm-anchored: active farms FLOOR the food count (each farm = a farmer), pulling wood-
+    # misattributed villagers OUT of wood (the late-game-attribution fix).
+    split = worker_split_at_ages(
+        focus, sim.pop_times_s, starting, ages, fishing_ops=ops, player=player, farm_times_s=farm_times
+    )
     mg_worker_share = mid_game_worker_share(
-        focus, sim.pop_times_s, starting, duration_s, fishing_ops=ops, player=player
+        focus, sim.pop_times_s, starting, duration_s, fishing_ops=ops, player=player, farm_times_s=farm_times
     )
     focus_by_res = Counter(e["resource"] for e in focus)
     worker_allocation = {
