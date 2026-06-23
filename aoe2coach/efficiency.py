@@ -99,10 +99,10 @@ def tc_idle(ops, player, threshold_s=IDLE_GAP_THRESHOLD_S, precap_s=None, age_wi
     Returns:
       {"tc_idle_s": total idle seconds (sum of over-threshold gaps WITHIN the pre-cap window),
        "precap_window_s": the pre-cap cutoff in seconds (idle% = tc_idle_s / precap_window_s),
-       "longest_villager_gap_s": longest single gap over the WHOLE game (0 if <2 villagers),
+       "longest_villager_gap_s": longest single PRE-CAP, AGE-EXCLUDED idle gap (0 if <2 villagers),
        "longest_villager_gap_window_s": [start_s, end_s] of that gap (None if <2 villagers),
-       "idle_gap_windows_s": [[start_s, end_s], ...] for every gap OVER threshold (whole game),
-       "villager_gaps_s": [each gap in seconds, in order]}
+       "idle_gap_windows_s": [[start_s, end_s], ...] for every pre-cap age-excluded gap OVER threshold,
+       "villager_gaps_s": [each raw gap in seconds, in order]}
 
     A "gap" is the time between two consecutive villager queues; only the portion of gaps EXCEEDING
     a normal train time is idle, so we count gap-minus-threshold summed over gaps > threshold. This
@@ -131,9 +131,38 @@ def tc_idle(ops, player, threshold_s=IDLE_GAP_THRESHOLD_S, precap_s=None, age_wi
         precap_s = times[-1] // 1000 if times else 0
     age_windows = age_windows or []
 
+    def _age_busy(start_s, end_s):
+        """Seconds of [start_s, end_s] occupied by an age advance — the TC physically can't make
+        villagers while it loads an age, so this is advancing, not idling."""
+        busy = 0
+        for a_start, a_end in age_windows:
+            overlap = min(end_s, a_end) - max(start_s, a_start)
+            if overlap > 0:
+                busy += overlap
+        return busy
+
+    def _idle_subintervals(start_s, end_s):
+        """[start_s, end_s] with the age-up spans cut out → the contiguous idle pieces. A gap that
+        contains an age advance in the middle is two separate idle stretches (before/after loading),
+        not one long gap — so the longest-gap headline is a real recoverable idle, not the age-up."""
+        pieces = [(start_s, end_s)]
+        for a_start, a_end in age_windows:
+            nxt = []
+            for s, e in pieces:
+                if a_end <= s or a_start >= e:
+                    nxt.append((s, e))
+                    continue
+                if s < a_start:
+                    nxt.append((s, a_start))
+                if a_end < e:
+                    nxt.append((a_end, e))
+            pieces = nxt
+        return pieces
+
     # Longest gap + idle windows are measured ONLY within the pre-cap window (Nam): a gap after the
     # player stopped making villagers (~200 pop) is intentional, not a mistake. A gap counts if it
-    # STARTS before the cap, and only its portion up to the cutoff is taken.
+    # STARTS before the cap, and only its portion up to the cutoff is taken. Age-up spans are cut out
+    # (the gap "around the Feudal click" is the age loading, not a recoverable idle).
     longest = 0
     longest_window = None
     idle_windows = []
@@ -142,12 +171,13 @@ def tc_idle(ops, player, threshold_s=IDLE_GAP_THRESHOLD_S, precap_s=None, age_wi
         if start_s >= precap_s:
             continue  # gap starts after the player stopped wanting villagers — not idle
         end_s = min(times[k + 1] // 1000, precap_s)
-        capped = end_s - start_s
-        if capped > longest:
-            longest = capped
-            longest_window = [start_s, end_s]
-        if capped > threshold_s:
-            idle_windows.append([start_s, end_s])
+        for s, e in _idle_subintervals(start_s, end_s):
+            dur = e - s
+            if dur > longest:
+                longest = dur
+                longest_window = [s, e]
+            if dur > threshold_s:
+                idle_windows.append([s, e])
     idle = 0
     for k in range(1, len(times)):
         start_s = times[k - 1] // 1000
@@ -157,12 +187,7 @@ def tc_idle(ops, player, threshold_s=IDLE_GAP_THRESHOLD_S, precap_s=None, age_wi
             continue  # gap starts at/after the cap -> intentional quiet, not idle
         # An age advance occupies the TC, so subtract its overlap with this gap — that's advancing,
         # not idling (fixes the Castle-click-loading-counted-as-idle bug).
-        busy = 0
-        for a_start, a_end in age_windows:
-            overlap = min(clipped_end, a_end) - max(start_s, a_start)
-            if overlap > 0:
-                busy += overlap
-        idle += max(0, (clipped_end - start_s) - busy - threshold_s)
+        idle += max(0, (clipped_end - start_s) - _age_busy(start_s, clipped_end) - threshold_s)
 
     return {
         "tc_idle_s": idle,

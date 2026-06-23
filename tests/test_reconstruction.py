@@ -336,6 +336,30 @@ def test_tc_idle_only_counts_before_precap_cutoff():
     assert idle["longest_villager_gap_window_s"] == [25, 100]
 
 
+def test_tc_idle_excludes_age_up_from_idle_and_longest_gap():
+    """The gap 'around the Feudal click' is the age loading (TC can't make villagers while advancing),
+    not a recoverable idle. Age-up spans must be cut from BOTH the idle sum AND the longest gap, and a
+    gap split by an age-up reports its longest CONTIGUOUS idle piece (not the whole straddling span)."""
+    from aoe2coach import efficiency
+
+    # Villager at 0, then a 200s gap to the next at 200s. A Feudal advance loads 60..190 (130s) inside
+    # that gap, leaving idle pieces 0..60 (60s) and 190..200 (10s).
+    ops = [
+        (0, Action.DE_QUEUE, {"player_id": 1, "unit_id": 83, "amount": 1}),
+        (200_000, Action.DE_QUEUE, {"player_id": 1, "unit_id": 83, "amount": 1}),
+    ]
+    age_windows = [[60, 190]]
+    idle = efficiency.tc_idle(ops, player=1, precap_s=300, age_windows=age_windows)
+    # idle sum = (200 - 130 age) - 30 threshold = 40s, not (200 - 30) = 170.
+    assert idle["tc_idle_s"] == 40
+    # longest contiguous idle is the 0..60 piece (60s), NOT the 200s straddling gap.
+    assert idle["longest_villager_gap_s"] == 60
+    assert idle["longest_villager_gap_window_s"] == [0, 60]
+    # without the age window the whole 200s gap would be the longest — proving the exclusion bites.
+    no_age = efficiency.tc_idle(ops, player=1, precap_s=300)
+    assert no_age["longest_villager_gap_s"] == 200
+
+
 def test_precap_cutoff_reaches_200_pop():
     from aoe2coach import efficiency, production
 

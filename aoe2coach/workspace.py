@@ -101,7 +101,8 @@ Your inputs are all in your current working directory:
   candidates.md    — 1-3 pre-narrowed build orders, each with a reference file path.
   references/      — the build-order reference library (read ONE on demand to get targets).
   mistakes.json    — deterministically flagged mistakes (#6); narrate the flagged ones, hedge by tier.
-  economy.json     — ESTIMATED economy (#2). Coarse/qualitative — never present as exact.
+  economy.json     — ESTIMATED economy (#2): per-age + per-villager-count worker split (farm-anchored
+                     food) and cumulative spend-over-time series. Qualitative trends only, never exact.
   strategic_map.png{extra_maps} — the strategic map(s) (#7). Read these images for spatial context
                      (base layout, forward buildings, walls, where engagements happened).
   map_legend.md    — what the colors/markers on the map mean.
