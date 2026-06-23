@@ -215,6 +215,24 @@ def test_gather_focus_events_resolve_and_classify():
     assert [(e["t_s"], e["resource"]) for e in evs] == [(10, "wood"), (20, "gold"), (30, "wood")]
 
 
+def test_gather_focus_events_count_camp_builds_as_intent():
+    """Building a drop-off camp is a gather-intent signal: a Mining Camp near the gold mine → gold
+    (catching villagers pulled off wood to go mine), a Lumber Camp near trees → wood. Opponent's
+    builds are ignored."""
+    from mgz.fast import Action
+
+    res = gaia.resource_points(_gaia_objs())
+    by_objid = gaia.by_object_id(_gaia_objs())
+    ops = [
+        (10_000, Action.BUILD, {"player_id": 1, "building_id": 584, "x": 55.0, "y": 55.0}),  # Mining Camp → gold
+        (20_000, Action.BUILD, {"player_id": 1, "building_id": 562, "x": 50.0, "y": 50.0}),  # Lumber Camp → wood
+        (30_000, Action.BUILD, {"player_id": 1, "building_id": 70, "x": 55.0, "y": 55.0}),  # House → no gather intent
+        (40_000, Action.BUILD, {"player_id": 2, "building_id": 584, "x": 55.0, "y": 55.0}),  # opponent → ignored
+    ]
+    evs = econ.gather_focus_events(ops, player=1, gaia_by_objid=by_objid, resource_points=res)
+    assert [(e["t_s"], e["resource"]) for e in evs] == [(10, "gold"), (20, "wood")]
+
+
 # ------------------------------------------------------------------- worker_split_at_ages
 def test_worker_split_shows_meaningful_wood_not_all_food():
     # Synthetic: villagers pop steadily; gather focus alternates wood/food before feudal.
@@ -322,6 +340,26 @@ def test_resource_balance_series_is_monotonic_cumulative_spend():
     assert food == sorted(food)  # cumulative spend never decreases
     total = econ.spend.spent_by_resource(ops, 1)
     assert series[-1]["spent"] == total
+
+
+def test_available_resources_counts_base_mines_excludes_distant():
+    """Stone/gold available at MY base = tiles within base-radius (map_dim/3) × per-tile (350/800).
+    Distant (neutral/opponent) mines fall outside the radius and don't count."""
+    base = {"x": 50.0, "y": 50.0}
+    recon = {"spatial": {"me": {"base_centroid": base}}, "meta": {"map_dim": 120}}  # radius = 40
+    gaia_objs = [
+        {"class_id": 10, "object_id": 102, "position": {"x": 52.0, "y": 51.0}},  # stone near base
+        {"class_id": 10, "object_id": 102, "position": {"x": 48.0, "y": 49.0}},  # stone near base
+        {"class_id": 10, "object_id": 102, "position": {"x": 110.0, "y": 110.0}},  # stone FAR (neutral)
+        {"class_id": 10, "object_id": 66, "position": {"x": 53.0, "y": 47.0}},  # gold near base
+        {"class_id": 10, "object_id": 66, "position": {"x": 115.0, "y": 50.0}},  # gold FAR
+    ]
+    out = econ.available_resources(gaia_objs, recon)
+    assert out == {"stone": 2 * 350, "gold": 1 * 800}  # only the near tiles
+
+
+def test_available_resources_no_base_returns_empty():
+    assert econ.available_resources([], {"spatial": {}, "meta": {}}) == {}
 
 
 def test_attach_floating_flags_overgathered_resource_only():

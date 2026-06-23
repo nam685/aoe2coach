@@ -174,6 +174,10 @@ Authoritative inputs in your cwd:
                    • resource_balance.spent_by_resource + .series — cumulative near-exact SPEND per
                      resource over time. .floating flags a mid-game gather-intent-minus-spend gap
                      (e.g. floating wood). collected/bank totals are suppressed (null) — never invent.
+                   • resource_balance.available + .mined_out — FINITE stone/gold at the base (gaia
+                     tiles × per-tile). When mined_out[stone|gold] is true the base mine ran dry, so
+                     villagers still on it are idle/relocating — a real coaching point (expand to a
+                     neutral mine / move them). Gold/stone are finite; food/wood are not.
                    Use the series to judge eco trends; do not quote individual series points as facts.
   strategic_map.png (+ engagement_NN.png) — the strategic map IMAGES (#7). READ them for spatial
                    context: base layout, forward buildings, walls, and where pressure happened.
