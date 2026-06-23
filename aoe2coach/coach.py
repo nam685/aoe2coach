@@ -191,7 +191,10 @@ forward buildings, eco/military tech timings, villager idle time, and HOW THE GA
 OUTPUT — plain text, exactly two sections:
 
   WHAT HAPPENED
-  - Opening: <tag>   (one of: scouts, archers, maa_archers, drush, fast_castle, tower_rush, unknown)
+  - Opening: <short tag, MAX 4 words> — the build family/name ONLY (e.g. one of: scouts,
+    archers, maa_archers, scouts_into_knights, drush, fast_castle, knights, tower_rush, unknown).
+    This is a LABEL, not a description: NO full sentence, NO "→ transition into ...", NO civ
+    descriptor, NO castle/imperial follow-up. Just the opening, in a few words.
   - then 4-7 short FACTUAL bullets restating the markers above (timings, comp, outcome).
     Facts only here — no judgment.
 
