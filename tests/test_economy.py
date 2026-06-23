@@ -324,6 +324,25 @@ def test_resource_balance_series_is_monotonic_cumulative_spend():
     assert series[-1]["spent"] == total
 
 
+def test_attach_floating_flags_overgathered_resource_only():
+    """floating(R) = max(0, total_spent × worker_share − spent(R)). Heavy wood gathering with little
+    wood spending → wood floats; a resource spent in proportion to its gathering does not."""
+    wa = [
+        {"vils": 3, "t_s": 0, "alloc": {}},
+        {"vils": 10, "t_s": 100, "alloc": {"wood": 8, "gold": 2}},
+    ]
+    rb = [
+        {"vils": 3, "t_s": 0, "spent": {}},
+        {"vils": 10, "t_s": 100, "spent": {"wood": 100, "gold": 900}},
+    ]
+    out = econ.attach_floating(rb, wa)
+    # worker_share wood = 8/10 = 0.8; total_spent = 1000 → implied wood spend 800; actual 100 → float 700.
+    assert out[1]["floating"]["wood"] == 700
+    # gold: worker_share 0.2 → implied 200; actual 900 → no surplus, not flagged.
+    assert "gold" not in out[1]["floating"]
+    assert out[0]["floating"] == {}  # no signal yet at t=0
+
+
 # ------------------------------------------------------------------- collected_estimate (band/labels)
 def test_collected_estimate_carries_band_and_labels():
     out = econ.collected_estimate({"food": 20, "wood": 18, "gold": 6, "stone": 2})

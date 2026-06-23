@@ -266,8 +266,13 @@ def _build_agentic_argv(
     claude_bin: str,
     max_turns: int,
     web_domain: str | None,
+    effort: str | None = "xhigh",
 ) -> list[str]:
-    """Assemble the `claude -p` argv for the agentic run (read-only tools, JSON output)."""
+    """Assemble the `claude -p` argv for the agentic run (read-only tools, JSON output).
+
+    `effort` sets the reasoning-effort tier (`--effort`); default "xhigh" — deliberately NOT "max"
+    (max burns the session budget far faster for little coaching gain). Pass None to omit the flag.
+    """
     allowed = list(READONLY_TOOLS)
     if web_domain:
         allowed.append(f"WebFetch(domain:{web_domain})")
@@ -279,6 +284,10 @@ def _build_agentic_argv(
         model,
         "--output-format",
         "json",
+    ]
+    if effort:
+        argv += ["--effort", effort]
+    argv += [
         "--append-system-prompt",
         COACH_SYSTEM_V2,
         "--allowedTools",
@@ -309,15 +318,17 @@ def run_agentic_coach(
     max_turns: int = 12,
     web_domain: str | None = None,
     runner=subprocess.run,
+    effort: str | None = "xhigh",
 ) -> tuple[str, str]:
     """Run the agentic coach (`claude -p` AS AN AGENT) over a prepared workspace dir.
 
     Returns (result_text, model_used). Raises RuntimeError on any failure mode the prod wrapper
     treats as "fall back to single-shot": non-zero exit, non-JSON, is_error, or empty result.
-    `runner` is injectable (defaults to subprocess.run) so tests never spawn a real CLI.
+    `runner` is injectable (defaults to subprocess.run) so tests never spawn a real CLI. `effort`
+    is the reasoning tier (default "xhigh", not "max").
     """
     task_prompt = (workspace / "TASK.md").read_text(encoding="utf-8")
-    argv = _build_agentic_argv(task_prompt, model, claude_bin, max_turns, web_domain)
+    argv = _build_agentic_argv(task_prompt, model, claude_bin, max_turns, web_domain, effort=effort)
     result = runner(
         argv,
         cwd=str(workspace),
@@ -393,6 +404,7 @@ def _coach_v2(
     max_turns: int,
     web_domain: str | None,
     runner,
+    effort: str | None = "xhigh",
 ) -> CoachOutput:
     """The v2 path: build a workspace, run the agentic coach, fall back to single-shot facts-only.
 
@@ -421,6 +433,7 @@ def _coach_v2(
                 max_turns=max_turns,
                 web_domain=web_domain,
                 runner=runner,
+                effort=effort,
             )
         return CoachOutput(
             raw_text=raw_text, opening_tag=parse_opening(raw_text), model_used=model_used, tier="agentic"
@@ -455,6 +468,7 @@ def coach(
     max_turns: int = 12,
     web_domain: str | None = None,
     runner=subprocess.run,
+    effort: str | None = "xhigh",
 ) -> CoachOutput:
     """Pure, side-effect-free coach call shared by prod and the eval.
 
@@ -482,6 +496,7 @@ def coach(
             max_turns=max_turns,
             web_domain=web_domain,
             runner=runner,
+            effort=effort,
         )
     prompt = build_coach_prompt(salient_log, metrics)
     raw_text, model_used = run_claude_coach(prompt, model=model, claude_bin=claude_bin)

@@ -362,7 +362,7 @@ def resource_balance_series(ops, player, pop_times_s, starting):
     At each checkpoint (vils, t_s) the value is the cumulative spend (BUILD+train+research costs) up to
     t_s — monotonic, honest, log-scalable. Collected/bank totals stay suppressed (never fabricated).
 
-    Each point: {vils, t_s, spent:{resource: amount}}.
+    Each point: {vils, t_s, spent:{resource: amount}}. `attach_floating` later adds a `floating` dict.
     """
     pts = sorted(pop_times_s)
     checkpoints = [(starting, 0)] + [(starting + i + 1, int(pt)) for i, pt in enumerate(pts)]
@@ -370,6 +370,40 @@ def resource_balance_series(ops, player, pop_times_s, starting):
     for vils, t in checkpoints:
         series.append({"vils": vils, "t_s": t, "spent": spend.spent_by_resource(ops, player, end_s=t)})
     return series
+
+
+def attach_floating(rb_series, wa_series):
+    """Add a per-resource FLOATING estimate to each resource_balance.series point (in place, returns it).
+
+    floating(R, t) = max(0, total_spent(t) × worker_share(R, t) − spent(R, t)): if spending had matched
+    gathering EFFORT (the worker-share), you'd have spent total_spent × worker_share on R; you only spent
+    spent(R); the surplus is floating (gathered-but-unspent). This is the honest floating SIGNAL —
+    anchored to near-exact spend × the trusted worker-share — NOT a fabricated bank total (the book-rate
+    collected integral is unreliable, ~3× over on wood). worker_share is cumulative worker-seconds
+    (∫ alloc dt), so it tracks where effort actually went over time.
+
+    rb_series and wa_series are index-aligned (same per-villager-count checkpoints). Each rb point gains
+    a `floating` dict {resource: amount} holding only resources with a positive surplus.
+    """
+    ws = dict.fromkeys(_RESOURCES, 0.0)  # cumulative worker-seconds per resource
+    n = min(len(rb_series), len(wa_series))
+    for i in range(n):
+        if i > 0:
+            dt = max(0, wa_series[i]["t_s"] - wa_series[i - 1]["t_s"])
+            alloc = wa_series[i].get("alloc", {})  # allocation reached by this checkpoint, over the interval
+            for r in _RESOURCES:
+                ws[r] += alloc.get(r, 0) * dt
+        tot_ws = sum(ws.values())
+        spent = rb_series[i].get("spent", {})
+        tot_spent = sum(spent.values())
+        floating = {}
+        if tot_ws > 0 and tot_spent > 0:
+            for r in _RESOURCES:
+                surplus = tot_spent * (ws[r] / tot_ws) - spent.get(r, 0)
+                if surplus > 1:
+                    floating[r] = int(round(surplus))
+        rb_series[i]["floating"] = floating
+    return rb_series
 
 
 def _integrate_collected(focus_events, pop_times_s, starting, recon):
@@ -623,14 +657,15 @@ def estimate_economy(ops, player, gaia_list, recon):
         focus, sim.pop_times_s, starting, duration_s, fishing_ops=ops, player=player, farm_times_s=farm_times
     )
     focus_by_res = Counter(e["resource"] for e in focus)
+    wa_series = worker_split_series(
+        focus, sim.pop_times_s, starting, fishing_ops=ops, player=player, farm_times_s=farm_times
+    )
     worker_allocation = {
         "unit": "workers",
         "tier": "estimate",
         "estimate": True,
         "per_age": split,
-        "series": worker_split_series(
-            focus, sim.pop_times_s, starting, fishing_ops=ops, player=player, farm_times_s=farm_times
-        ),
+        "series": wa_series,
         "mid_game_share": {r: round(s, 3) for r, s in mg_worker_share.items()},
         "n_gather_focus_events": len(focus),
         "gather_focus_by_resource": dict(focus_by_res),
@@ -653,7 +688,7 @@ def estimate_economy(ops, player, gaia_list, recon):
         "estimate": True,
         "spent_by_resource": spent,
         "spend_share": {r: round(spend_sh.get(r, 0.0), 3) for r in _RESOURCES} if spend_sh else {},
-        "series": resource_balance_series(ops, player, sim.pop_times_s, starting),
+        "series": attach_floating(resource_balance_series(ops, player, sim.pop_times_s, starting), wa_series),
         "floating": floating,
         "collected": None,  # gathered/bank totals are NOT fabricated — suppressed by design
         "relic_gold": "unavailable",
