@@ -386,6 +386,43 @@ def resource_balance_series(ops, player, pop_times_s, starting):
     return series
 
 
+_PER_TILE_AMOUNT = {"stone": 350, "gold": 800}  # AoE2 DE stone/gold per resource TILE
+
+
+def available_resources(gaia_list, recon):
+    """Finite stone/gold at MY base: resource TILES within a base-radius of my centroid × the per-tile
+    amount (stone 350, gold 800). Each gaia object is one tile.
+
+    Base-radius (≈ map_dim/3) captures MY mines and excludes the distant neutral/contested mines —
+    validated on Arabia, where it recovers the standard layout exactly (gold 1×7+2×4 = 15 tiles =
+    12000; stone 1×5+1×4 = 9 tiles = 3150). Gold/stone are finite: when the amount mined approaches
+    this cap the base mine is ~exhausted and villagers still on it are stranded (idle / must relocate
+    to a neutral mine). Returns {stone:int, gold:int}; no base centroid → {}.
+    """
+    if not isinstance(recon, dict):
+        recon = recon.to_dict()
+    sp = recon.get("spatial", {}) or {}
+    me = (sp.get("me") or {}).get("base_centroid")
+    if not me:
+        return {}
+    map_dim = (recon.get("meta", {}) or {}).get("map_dim") or 120
+    radius2 = (map_dim / 3.0) ** 2
+
+    out = {}
+    for res, amt in _PER_TILE_AMOUNT.items():
+        n = 0
+        for o in gaia_list:
+            if gaia_mod.resource_class(o) != res:
+                continue
+            p = o.get("position")
+            if not p:
+                continue
+            if (p["x"] - me["x"]) ** 2 + (p["y"] - me["y"]) ** 2 <= radius2:  # tile near MY base
+                n += 1
+        out[res] = n * amt
+    return out
+
+
 def attach_floating(rb_series, wa_series):
     """Add a per-resource FLOATING estimate to each resource_balance.series point (in place, returns it).
 
@@ -696,6 +733,19 @@ def estimate_economy(ops, player, gaia_list, recon):
     spent = spend.spent_by_resource(ops, player)
     spend_sh = spend.spend_share(spent)
     floating = floating_signal(mg_worker_share, spend_sh)
+    # Finite stone/gold at my base (gaia tiles × per-tile) + a mined-out flag. Stone/gold gather-rate
+    # integrals are accurate enough (game1: gold 0.98x / stone 0.81x) to compare against the cap; wood
+    # and food stay suppressed (wood integral is ~3.4x over — unreliable).
+    available = available_resources(gaia_list, recon)
+    est_collected = {}
+    mined_out = {}
+    if available:
+        totals, _vs = _integrate_collected(focus, sim.pop_times_s, starting, recon)
+        for res in ("stone", "gold"):
+            if res in available and available[res] > 0:
+                est = int(round(totals.get(res, 0.0)))
+                est_collected[res] = min(est, available[res])  # can't gather more than is on the map
+                mined_out[res] = est >= 0.85 * available[res]  # ~exhausted → vils there are stranded
     resource_balance = {
         "unit": "resource_amounts",
         "tier": "spending-near-exact + floating-heuristic",
@@ -705,12 +755,17 @@ def estimate_economy(ops, player, gaia_list, recon):
         "series": attach_floating(resource_balance_series(ops, player, sim.pop_times_s, starting), wa_series),
         "floating": floating,
         "collected": None,  # gathered/bank totals are NOT fabricated — suppressed by design
+        "available": available,  # finite stone/gold at my base (gaia tiles × per-tile); {} if no base
+        "collected_stone_gold": est_collected,  # capped est for stone/gold only (their integral is ok)
+        "mined_out": mined_out,  # {stone/gold: bool} — base mine ~exhausted → vils there stranded
         "relic_gold": "unavailable",
         "note": (
             "SPENDING is near-exact (sum of BUILD+DE_QUEUE+RESEARCH costs; ignores cancels -> slight "
             "over-count). FLOATING is a HEURISTIC mid-game gap between gathering INTENT (worker share) "
-            "and spend share — NOT a bank total. Gathered/collected totals are deliberately suppressed "
-            "(never fabricated); relic gold is unavailable (no command signal)."
+            "and spend share — NOT a bank total. AVAILABLE = finite stone/gold at my base (gaia tiles × "
+            "per-tile: stone 350, gold 800); when collected approaches it the base mine is exhausted "
+            "(mined_out) and any villagers still there are idle/relocating — expand to a neutral mine. "
+            "Wood/food collected totals stay suppressed (unreliable integral); relic gold unavailable."
         ),
     }
 

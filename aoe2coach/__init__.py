@@ -16,6 +16,7 @@ from .coach import (
 from .econ import (
     active_farms,
     attach_floating,
+    available_resources,
     collected_estimate,
     estimate_economy,
     gather_focus_events,
@@ -51,6 +52,7 @@ __all__ = [
     "active_farms",
     "collected_estimate",
     "attach_floating",
+    "available_resources",
     "estimate_economy",
     "gather_focus_events",
     "resolve_gather_resource",

@@ -342,6 +342,26 @@ def test_resource_balance_series_is_monotonic_cumulative_spend():
     assert series[-1]["spent"] == total
 
 
+def test_available_resources_counts_base_mines_excludes_distant():
+    """Stone/gold available at MY base = tiles within base-radius (map_dim/3) × per-tile (350/800).
+    Distant (neutral/opponent) mines fall outside the radius and don't count."""
+    base = {"x": 50.0, "y": 50.0}
+    recon = {"spatial": {"me": {"base_centroid": base}}, "meta": {"map_dim": 120}}  # radius = 40
+    gaia_objs = [
+        {"class_id": 10, "object_id": 102, "position": {"x": 52.0, "y": 51.0}},  # stone near base
+        {"class_id": 10, "object_id": 102, "position": {"x": 48.0, "y": 49.0}},  # stone near base
+        {"class_id": 10, "object_id": 102, "position": {"x": 110.0, "y": 110.0}},  # stone FAR (neutral)
+        {"class_id": 10, "object_id": 66, "position": {"x": 53.0, "y": 47.0}},  # gold near base
+        {"class_id": 10, "object_id": 66, "position": {"x": 115.0, "y": 50.0}},  # gold FAR
+    ]
+    out = econ.available_resources(gaia_objs, recon)
+    assert out == {"stone": 2 * 350, "gold": 1 * 800}  # only the near tiles
+
+
+def test_available_resources_no_base_returns_empty():
+    assert econ.available_resources([], {"spatial": {}, "meta": {}}) == {}
+
+
 def test_attach_floating_flags_overgathered_resource_only():
     """floating(R) = max(0, total_spent × worker_share − spent(R)). Heavy wood gathering with little
     wood spending → wood floats; a resource spent in proportion to its gathering does not."""
